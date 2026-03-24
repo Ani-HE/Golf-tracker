@@ -84,6 +84,7 @@ let state = {
   scores: Array(18).fill(""),
   rounds: loadRounds(),
   statsHole: null,
+  statsFilter: "forus",
   notices: [],
 };
 
@@ -154,16 +155,22 @@ function render() {
   }
 
   if(view==="statistikk"){
+    const filterKey = state.statsFilter || "forus";
+    const filtered = rounds.filter(r=>r.course===filterKey);
     if(!rounds.length){
       main=`<p style="text-align:center;color:#64748b;margin-top:40px">Ingen runder lagret enna.</p>`;
     } else {
-      const os={ count:rounds.length, diffs:rounds.map(r=>r.diff) };
-      os.avg=(os.diffs.reduce((a,b)=>a+b,0)/os.diffs.length).toFixed(1);
-      os.best=Math.min(...os.diffs); os.worst=Math.max(...os.diffs);
+      const os={ count:filtered.length, diffs:filtered.map(r=>r.diff) };
+      os.avg=os.diffs.length?(os.diffs.reduce((a,b)=>a+b,0)/os.diffs.length).toFixed(1):"-";
+      os.best=os.diffs.length?Math.min(...os.diffs):0; os.worst=os.diffs.length?Math.max(...os.diffs):0;
+
+      const baneFilter=`<div style="display:flex;gap:8px;margin-bottom:14px">
+        ${Object.entries(COURSES).map(([k,c])=>`<button onclick="setStatsFilter('${k}')" style="flex:1;padding:7px 0;border-radius:8px;border:2px solid ${filterKey===k?"#15803d":"#cbd5e1"};background:${filterKey===k?"#dcfce7":"#fff"};font-weight:600;font-size:13px;cursor:pointer">${c.name}</button>`).join("")}
+      </div>`;
 
       // worst holes
       const worst=Array.from({length:18},(_,i)=>{
-        const vs=rounds.map(r=>({s:r.scores[i],p:COURSES[r.course].holes[i]})).filter(v=>v.s>0);
+        const vs=filtered.map(r=>({s:r.scores[i],p:COURSES[r.course].holes[i]})).filter(v=>v.s>0);
         if(!vs.length)return{hole:i+1,delta:0};
         return{hole:i+1,delta:parseFloat((vs.reduce((s,v)=>s+(v.s-v.p),0)/vs.length).toFixed(2))};
       }).sort((a,b)=>b.delta-a.delta).slice(0,5);
@@ -175,7 +182,7 @@ function render() {
       ).join("");
 
       if(statsHole!==null){
-        const hd=rounds.filter(r=>r.scores[statsHole]>0).map(r=>({date:r.date,Slag:r.scores[statsHole],Par:COURSES[r.course].holes[statsHole]}));
+        const hd=filtered.filter(r=>r.scores[statsHole]>0).map(r=>({date:r.date,Slag:r.scores[statsHole],Par:COURSES[r.course].holes[statsHole]}));
         if(hd.length>=1){
           const hvals=hd.map(d=>d.Slag);
           const hpar=COURSES[rounds[0].course].holes[statsHole];
@@ -193,7 +200,9 @@ function render() {
         holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:8px">Trykk pa et hull for a se grafen.</p>`;
       }
 
-      const histRows=[...rounds].reverse().map(r=>`
+      const histRows=(!filtered.length)
+        ? `<p style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">Ingen runder pa denne banen enna.</p>`
+        : [...filtered].reverse().map(r=>`
         <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9">
           <div><span style="font-weight:600;font-size:13px">${fmtDate(r.date)}</span><span style="font-size:11px;color:#94a3b8;margin-left:6px">${r.courseName}</span></div>
           <div style="display:flex;gap:10px;align-items:center">
@@ -204,14 +213,15 @@ function render() {
         </div>`).join("");
 
       main=`
+        ${baneFilter}
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px">
           ${statBox("Runder",os.count,"#2563eb")}
-          ${statBox("Snitt",Number(os.avg)>0?"+"+os.avg:os.avg,"#d97706")}
-          ${statBox("Best",diffLabel(os.best),"#16a34a")}
+          ${statBox("Snitt",os.diffs.length?Number(os.avg)>0?"+"+os.avg:os.avg:"-","#d97706")}
+          ${statBox("Best",os.diffs.length?diffLabel(os.best):"-","#16a34a")}
           ${statBox("HCP",hcp!==null?hcp:"-","#7c3aed")}
         </div>
         ${hcp===null?`<p style="font-size:12px;color:#94a3b8;margin-bottom:12px;text-align:center">Trenger minst 3 runder for handicap-beregning</p>`:""}
-        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Totalt antall slag per runde</div>${lineChart(rounds.map(r=>({date:r.date,Slag:r.total,Par:r.par})),"Slag","Par","#15803d",180)}`)}
+        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Totalt antall slag per runde</div>${filtered.length>=2?lineChart(filtered.map(r=>({date:r.date,Slag:r.total,Par:r.par})),"Slag","Par","#15803d",180):'<p style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">Trenger minst 2 runder for graf.</p>'}`)}
         ${card(`<div style="font-weight:700;color:#374151;margin-bottom:4px">Verstinghull</div>
           <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">Topp 5 hull med hoyest snitt over par</div>
           ${worst.map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -264,6 +274,7 @@ function render() {
 // ── Actions ─────────────────────────────────────────────────────
 function setView(v)         { setState({view:v}); }
 function setCourse(k)       { setState({courseKey:k,scores:Array(18).fill("")}); }
+function setStatsFilter(k) { setState({statsFilter:k,statsHole:null}); }
 function setStatsHole(i)    { setState(s=>({statsHole:s.statsHole===i?null:i})); }
 function setScore(i,val){
   const n=parseInt(val);
