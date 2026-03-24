@@ -14,27 +14,43 @@
   </style>
 </head>
 <body>
-<div id="app"></div>
-<script>
+<div id="app"><div style="display:flex;align-items:center;justify-content:center;height:100vh;font-size:15px;color:#64748b">Laster...</div></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAFkIVQCK2nWQM1ZNPaZN-_-x6Bax6Eosg",
+  authDomain: "golf-tracker-c9189.firebaseapp.com",
+  projectId: "golf-tracker-c9189",
+  storageBucket: "golf-tracker-c9189.firebasestorage.app",
+  messagingSenderId: "901675126066",
+  appId: "1:901675126066:web:ce83270ef06c815967db2b"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+
 const COURSES = {
   forus:        { name: "Forus (Par 72)",        par: 72, cr: 72.9, slope: 144, holes: [4,4,4,3,5,4,3,4,5,4,3,5,4,4,4,4,3,5] },
   solastranden: { name: "Solastranden (Par 68)", par: 68, cr: 68.2, slope: 126, holes: [4,4,3,4,4,4,3,4,5,4,3,5,3,3,4,4,3,4] },
 };
 
 const ACHIEVEMENTS = [
-  { id:"r1",  badge:"1",   title:"Forste runde",   desc:"Registrerte sin forste runde",                   check: r => r.length >= 1 },
-  { id:"r5",  badge:"5",   title:"5 runder",        desc:"Fullforte 5 runder",                             check: r => r.length >= 5 },
-  { id:"r10", badge:"10",  title:"10 runder",       desc:"Fullforte 10 runder",                            check: r => r.length >= 10 },
-  { id:"bi",  badge:"B",   title:"Forste birdie",   desc:"Slo sin forste birdie",                          check: r => r.some(rd => rd.scores.some((s,i) => s === COURSES[rd.course].holes[i]-1)) },
-  { id:"ea",  badge:"E",   title:"Forste eagle",    desc:"Slo sin forste eagle",                           check: r => r.some(rd => rd.scores.some((s,i) => s <= COURSES[rd.course].holes[i]-2)) },
-  { id:"pr",  badge:"P",   title:"Par-runde",       desc:"Fullforte en runde pa par eller bedre",          check: r => r.some(rd => rd.diff <= 0) },
-  { id:"u90", badge:"90",  title:"Under 90",        desc:"Slo under 90 slag pa Forus",                    check: r => r.some(rd => rd.course==="forus" && rd.total<90) },
-  { id:"u80", badge:"80",  title:"Under 80",        desc:"Slo under 80 slag pa Forus",                    check: r => r.some(rd => rd.course==="forus" && rd.total<80) },
-  { id:"up",  badge:"UP",  title:"Pa vei opp",      desc:"3 runder pa rad med lavere score enn forrige",   check: r => { if(r.length<3)return false; const l=r.slice(-3); return l[1].total<l[0].total&&l[2].total<l[1].total; } },
+  { id:"r1",  badge:"1",  title:"Forste runde",   desc:"Registrerte sin forste runde",                  check: r => r.length >= 1 },
+  { id:"r5",  badge:"5",  title:"5 runder",        desc:"Fullforte 5 runder",                            check: r => r.length >= 5 },
+  { id:"r10", badge:"10", title:"10 runder",       desc:"Fullforte 10 runder",                           check: r => r.length >= 10 },
+  { id:"bi",  badge:"B",  title:"Forste birdie",   desc:"Slo sin forste birdie",                         check: r => r.some(rd => rd.scores.some((s,i) => s === COURSES[rd.course].holes[i]-1)) },
+  { id:"ea",  badge:"E",  title:"Forste eagle",    desc:"Slo sin forste eagle",                          check: r => r.some(rd => rd.scores.some((s,i) => s <= COURSES[rd.course].holes[i]-2)) },
+  { id:"pr",  badge:"P",  title:"Par-runde",       desc:"Fullforte en runde pa par eller bedre",         check: r => r.some(rd => rd.diff <= 0) },
+  { id:"u90", badge:"90", title:"Under 90",        desc:"Slo under 90 slag pa Forus",                   check: r => r.some(rd => rd.course==="forus" && rd.total<90) },
+  { id:"u80", badge:"80", title:"Under 80",        desc:"Slo under 80 slag pa Forus",                   check: r => r.some(rd => rd.course==="forus" && rd.total<80) },
+  { id:"up",  badge:"UP", title:"Pa vei opp",      desc:"3 runder pa rad med lavere score enn forrige",  check: r => { if(r.length<3)return false; const l=r.slice(-3); return l[1].total<l[0].total&&l[2].total<l[1].total; } },
 ];
 
-function loadRounds() { try { const s=localStorage.getItem("sola_gk_v3"); return s?JSON.parse(s):[]; } catch(e){return[];} }
-function saveRounds(r) { try { localStorage.setItem("sola_gk_v3", JSON.stringify(r)); } catch(e){} }
 function fmtDate(d) { return new Date(d).toLocaleDateString("nb-NO",{day:"2-digit",month:"short"}); }
 function diffLabel(d) { return d===0?"E":d>0?"+"+d:""+d; }
 function diffColor(d) { return d<0?"#16a34a":d===0?"#2563eb":"#dc2626"; }
@@ -47,22 +63,20 @@ function calcHCP(rounds) {
   return (diffs.slice(0,take).reduce((a,b)=>a+b,0)/take*0.96).toFixed(1);
 }
 
-// ── SVG Line Chart ──────────────────────────────────────────────
 function lineChart(data, key, parKey, color, h) {
   if(!data||data.length<2) return '<p style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">Trenger minst 2 runder for graf.</p>';
-  const W=460, H=h||160, PL=32, PR=12, PT=10, PB=28;
+  const W=460,H=h||160,PL=32,PR=12,PT=10,PB=28;
   const vals=data.map(d=>d[key]);
   const pars=parKey?data.map(d=>d[parKey]):null;
   const allVals=pars?[...vals,...pars]:vals;
-  const minV=Math.min(...allVals)-1, maxV=Math.max(...allVals)+1;
+  const minV=Math.min(...allVals)-1,maxV=Math.max(...allVals)+1;
   const xS=(i)=>PL+(i/(data.length-1))*(W-PL-PR);
   const yS=(v)=>PT+(1-(v-minV)/(maxV-minV))*(H-PT-PB);
   const pts=vals.map((v,i)=>xS(i)+","+yS(v)).join(" ");
   const parPts=pars?pars.map((v,i)=>xS(i)+","+yS(v)).join(" "):null;
-  const yTicks=4;
-  let ticks="", labels="";
-  for(let i=0;i<=yTicks;i++){
-    const v=Math.round(minV+(maxV-minV)*(i/yTicks));
+  let ticks="",labels="";
+  for(let i=0;i<=4;i++){
+    const v=Math.round(minV+(maxV-minV)*(i/4));
     const y=yS(v);
     ticks+=`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#f1f5f9" stroke-width="1"/>`;
     labels+=`<text x="${PL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#94a3b8">${v}</text>`;
@@ -77,15 +91,21 @@ function lineChart(data, key, parKey, color, h) {
     ${dots}</svg>`;
 }
 
-// ── State ───────────────────────────────────────────────────────
 let state = {
   view: "runde",
   courseKey: "forus",
   scores: Array(18).fill(""),
-  rounds: loadRounds(),
+  rounds: [],
   statsHole: null,
   statsFilter: "forus",
   notices: [],
+  user: null,
+  authView: "login",
+  authEmail: "",
+  authPassword: "",
+  authError: "",
+  authLoading: false,
+  dataLoading: false,
 };
 
 function setState(patch) {
@@ -93,55 +113,178 @@ function setState(patch) {
   render();
 }
 
-// ── Render ──────────────────────────────────────────────────────
-function render() {
-  const { view, courseKey, scores, rounds, statsHole, notices } = state;
-  const course = COURSES[courseKey];
-  const total  = scores.reduce((s,v)=>s+(parseInt(v)||0),0);
-  const diff   = total - course.par;
-  const filled = scores.every(v=>parseInt(v)>0);
-  const hcp    = calcHCP(rounds);
-  const unlockedAch = ACHIEVEMENTS.filter(a=>a.check(rounds));
+async function loadRounds(user) {
+  setState({dataLoading:true});
+  try {
+    const q = query(collection(db,"users",user.uid,"rounds"), orderBy("date","asc"));
+    const snap = await getDocs(q);
+    const rounds = snap.docs.map(d=>({...d.data(), firestoreId:d.id}));
+    setState({rounds, dataLoading:false});
+  } catch(e) {
+    setState({dataLoading:false});
+  }
+}
 
-  // ── helpers ──
-  const btn = (label, active, onclick, extra="") =>
-    `<button onclick="${onclick}" style="flex:1;padding:8px 0;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:13px;background:${active?"#15803d":"#e2e8f0"};color:${active?"#fff":"#374151"};${extra}">${label}</button>`;
+async function saveRound() {
+  const {courseKey,scores,rounds,user} = state;
+  const course = COURSES[courseKey];
+  const total = scores.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const diff = total - course.par;
+  const round = {
+    date: new Date().toISOString(),
+    course: courseKey, courseName: course.name,
+    scores: scores.map(v=>parseInt(v)||0),
+    total, par: course.par, diff,
+  };
+  try {
+    const docRef = await addDoc(collection(db,"users",user.uid,"rounds"), round);
+    const updated = [...rounds, {...round, firestoreId:docRef.id}];
+    const msgs = [];
+    const prev = rounds.filter(r=>r.course===courseKey);
+    if(!prev.length) msgs.push("Forste runde pa "+course.name+"!");
+    else if(total<Math.min(...prev.map(r=>r.total))) msgs.push("Ny personlig rekord pa "+course.name+": "+total+" slag!");
+    const hRec=[];
+    scores.forEach((s,i)=>{ const v=parseInt(s),pb=rounds.filter(r=>r.course===courseKey).map(r=>r.scores[i]).filter(x=>x>0); if(pb.length&&v<Math.min(...pb))hRec.push("hull "+(i+1)); });
+    if(hRec.length) msgs.push("Ny rekord pa "+hRec.join(", ")+"!");
+    const prevIds=ACHIEVEMENTS.filter(a=>a.check(rounds)).map(a=>a.id);
+    ACHIEVEMENTS.filter(a=>!prevIds.includes(a.id)&&a.check(updated)).forEach(a=>msgs.push("Achievement: "+a.title+"!"));
+    setState({rounds:updated, scores:Array(18).fill(""), notices:msgs});
+    if(msgs.length) setTimeout(()=>setState({notices:[]}),5000);
+  } catch(e) {
+    alert("Kunne ikke lagre runden. Sjekk internettforbindelsen.");
+  }
+}
+
+async function deleteRound(firestoreId) {
+  if(!confirm("Slett denne runden?")) return;
+  try {
+    await deleteDoc(doc(db,"users",state.user.uid,"rounds",firestoreId));
+    setState({rounds: state.rounds.filter(r=>r.firestoreId!==firestoreId)});
+  } catch(e) {
+    alert("Kunne ikke slette runden.");
+  }
+}
+
+async function handleAuth() {
+  const {authView, authEmail, authPassword} = state;
+  setState({authLoading:true, authError:""});
+  try {
+    if(authView==="login") {
+      await signInWithEmailAndPassword(auth, authEmail, authPassword);
+    } else {
+      await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+    }
+  } catch(e) {
+    let msg = "Noe gikk galt. Prøv igjen.";
+    if(e.code==="auth/user-not-found"||e.code==="auth/wrong-password"||e.code==="auth/invalid-credential") msg="Feil e-post eller passord.";
+    else if(e.code==="auth/email-already-in-use") msg="E-postadressen er allerede i bruk.";
+    else if(e.code==="auth/weak-password") msg="Passordet må være minst 6 tegn.";
+    else if(e.code==="auth/invalid-email") msg="Ugyldig e-postadresse.";
+    setState({authError:msg, authLoading:false});
+  }
+}
+
+onAuthStateChanged(auth, user => {
+  if(user) {
+    setState({user});
+    loadRounds(user);
+  } else {
+    setState({user:null, rounds:[]});
+  }
+});
+
+function setView(v)       { setState({view:v}); }
+function setCourse(k)     { setState({courseKey:k, scores:Array(18).fill("")}); }
+function setStatsFilter(k){ setState({statsFilter:k, statsHole:null}); }
+function setStatsHole(i)  { setState(s=>({statsHole:s.statsHole===i?null:i})); }
+function setScore(i,val)  {
+  const n=parseInt(val);
+  if(val===""|| (n>=1&&n<=15)){
+    const scores=[...state.scores]; scores[i]=val===""?"":String(n); setState({scores});
+  }
+}
+
+function render() {
+  const { view, courseKey, scores, rounds, statsHole, notices, user, authView, authEmail, authPassword, authError, authLoading, dataLoading, statsFilter } = state;
+
+  if(!user) {
+    document.getElementById("app").innerHTML=`
+      <div style="max-width:380px;margin:60px auto;padding:0 16px">
+        <div style="text-align:center;margin-bottom:28px">
+          <div style="font-size:22px;font-weight:700;color:#15803d">Sola GK Scoretracker</div>
+        </div>
+        <div style="background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+          <div style="display:flex;gap:8px;margin-bottom:20px">
+            <button onclick="window._setAuthView('login')" style="flex:1;padding:8px 0;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:14px;background:${authView==="login"?"#15803d":"#e2e8f0"};color:${authView==="login"?"#fff":"#374151"}">Logg inn</button>
+            <button onclick="window._setAuthView('register')" style="flex:1;padding:8px 0;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:14px;background:${authView==="register"?"#15803d":"#e2e8f0"};color:${authView==="register"?"#fff":"#374151"}">Opprett konto</button>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:13px;color:#64748b;display:block;margin-bottom:4px">E-post</label>
+            <input type="email" id="authEmail" value="${authEmail}" oninput="window._setAuthEmail(this.value)" placeholder="din@epost.no"
+              style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0;font-size:14px;outline:none">
+          </div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:13px;color:#64748b;display:block;margin-bottom:4px">Passord</label>
+            <input type="password" id="authPassword" value="${authPassword}" oninput="window._setAuthPassword(this.value)" placeholder="Minst 6 tegn"
+              style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0;font-size:14px;outline:none">
+          </div>
+          ${authError?`<div style="background:#fef2f2;color:#dc2626;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px">${authError}</div>`:""}
+          <button onclick="window._handleAuth()" ${authLoading?"disabled":""} style="width:100%;padding:12px 0;border-radius:10px;border:none;background:#15803d;color:#fff;font-weight:700;font-size:15px;cursor:pointer">
+            ${authLoading?"Venter...":(authView==="login"?"Logg inn":"Opprett konto")}
+          </button>
+        </div>
+      </div>`;
+    window._setAuthView = v => setState({authView:v, authError:""});
+    window._setAuthEmail = v => setState({authEmail:v});
+    window._setAuthPassword = v => setState({authPassword:v});
+    window._handleAuth = handleAuth;
+    return;
+  }
+
+  if(dataLoading) {
+    document.getElementById("app").innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-size:15px;color:#64748b">Laster runder...</div>`;
+    return;
+  }
+
+  const course = COURSES[courseKey];
+  const total = scores.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const diff = total - course.par;
+  const filled = scores.every(v=>parseInt(v)>0);
+  const hcp = calcHCP(rounds);
+  const unlockedAch = ACHIEVEMENTS.filter(a=>a.check(rounds));
 
   const card = (content, mb=14) =>
     `<div style="background:#fff;border-radius:12px;padding:12px;margin-bottom:${mb}px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">${content}</div>`;
-
   const statBox = (lbl,val,col) =>
-    `<div style="background:#fff;border-radius:10px;padding:10px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+    `<div style="background:#f8fafc;border-radius:10px;padding:10px 6px;text-align:center">
       <div style="font-size:11px;color:#64748b;font-weight:600">${lbl}</div>
-      <div style="font-size:17px;font-weight:800;color:${col}">${val}</div>
+      <div style="font-size:17px;font-weight:700;color:${col}">${val}</div>
     </div>`;
 
-  // ── Hull-grid ──
-  let grid = "";
+  let grid="";
   for(let half=0;half<2;half++){
     if(half===1) grid+=`<div style="height:1px;background:#e2e8f0;margin:8px 0"></div>`;
     grid+=`<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:4px">`;
     for(let j=0;j<9;j++){
-      const i=half*9+j, par=course.holes[i], val=parseInt(scores[i]), delta=val-par;
+      const i=half*9+j,par=course.holes[i],val=parseInt(scores[i]),delta=val-par;
       let bg="#f1f5f9";
       if(val){ if(delta<=-2)bg="#fef08a";else if(delta===-1)bg="#bbf7d0";else if(delta===0)bg="#e0f2fe";else if(delta===1)bg="#fecaca";else bg="#f87171"; }
       grid+=`<div style="text-align:center">
         <div style="font-size:9px;color:#64748b;font-weight:600">H${i+1}</div>
         <div style="font-size:9px;color:#94a3b8">p${par}</div>
-        <input type="number" min="1" max="15" value="${scores[i]}" oninput="setScore(${i},this.value)"
+        <input type="number" min="1" max="15" value="${scores[i]}" oninput="window._setScore(${i},this.value)"
           style="width:100%;text-align:center;padding:4px 0;border-radius:6px;border:1px solid #e2e8f0;background:${bg};font-weight:700;font-size:15px">
       </div>`;
     }
     grid+=`</div>`;
   }
 
-  // ── Views ──
-  let main = "";
+  let main="";
 
   if(view==="runde"){
     main=`
       <div style="display:flex;gap:8px;margin-bottom:14px">
-        ${Object.entries(COURSES).map(([k,c])=>`<button onclick="setCourse('${k}')" style="flex:1;padding:7px 0;border-radius:8px;border:2px solid ${courseKey===k?"#15803d":"#cbd5e1"};background:${courseKey===k?"#dcfce7":"#fff"};font-weight:600;font-size:13px;cursor:pointer">${c.name}</button>`).join("")}
+        ${Object.entries(COURSES).map(([k,c])=>`<button onclick="window._setCourse('${k}')" style="flex:1;padding:7px 0;border-radius:8px;border:2px solid ${courseKey===k?"#15803d":"#cbd5e1"};background:${courseKey===k?"#dcfce7":"#fff"};font-weight:600;font-size:13px;cursor:pointer">${c.name}</button>`).join("")}
       </div>
       ${card(grid)}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:11px">
@@ -151,98 +294,88 @@ function render() {
         <span style="font-weight:600;color:#374151">Total: <strong style="font-size:20px">${total}</strong></span>
         <span style="font-weight:700;font-size:18px;color:${diffColor(diff)}">${diffLabel(diff)}</span>
       </div>`:""}
-      <button onclick="saveRound()" ${filled?"":"disabled"} style="width:100%;padding:12px 0;border-radius:10px;border:none;background:${filled?"#15803d":"#e2e8f0"};color:${filled?"#fff":"#94a3b8"};font-weight:700;font-size:15px;cursor:${filled?"pointer":"default"}">Lagre runde</button>`;
+      <button onclick="window._saveRound()" ${filled?"":"disabled"} style="width:100%;padding:12px 0;border-radius:10px;border:none;background:${filled?"#15803d":"#e2e8f0"};color:${filled?"#fff":"#94a3b8"};font-weight:700;font-size:15px;cursor:${filled?"pointer":"default"}">Lagre runde</button>`;
   }
 
   if(view==="statistikk"){
-    const filterKey = state.statsFilter || "forus";
-    const filtered = rounds.filter(r=>r.course===filterKey);
-    if(!rounds.length){
-      main=`<p style="text-align:center;color:#64748b;margin-top:40px">Ingen runder lagret enna.</p>`;
-    } else {
-      const os={ count:filtered.length, diffs:filtered.map(r=>r.diff) };
-      os.avg=os.diffs.length?(os.diffs.reduce((a,b)=>a+b,0)/os.diffs.length).toFixed(1):"-";
-      os.best=os.diffs.length?Math.min(...os.diffs):0; os.worst=os.diffs.length?Math.max(...os.diffs):0;
+    const filtered = rounds.filter(r=>r.course===statsFilter);
+    const diffs = filtered.map(r=>r.diff);
+    const avg = diffs.length?(diffs.reduce((a,b)=>a+b,0)/diffs.length).toFixed(1):null;
+    const best = diffs.length?Math.min(...diffs):null;
 
-      const baneFilter=`<div style="display:flex;gap:8px;margin-bottom:14px">
-        ${Object.entries(COURSES).map(([k,c])=>`<button onclick="setStatsFilter('${k}')" style="flex:1;padding:7px 0;border-radius:8px;border:2px solid ${filterKey===k?"#15803d":"#cbd5e1"};background:${filterKey===k?"#dcfce7":"#fff"};font-weight:600;font-size:13px;cursor:pointer">${c.name}</button>`).join("")}
-      </div>`;
+    const worst=Array.from({length:18},(_,i)=>{
+      const vs=filtered.map(r=>({s:r.scores[i],p:COURSES[r.course].holes[i]})).filter(v=>v.s>0);
+      if(!vs.length)return{hole:i+1,delta:0};
+      return{hole:i+1,delta:parseFloat((vs.reduce((s,v)=>s+(v.s-v.p),0)/vs.length).toFixed(2))};
+    }).sort((a,b)=>b.delta-a.delta);
 
-      // worst holes
-      const worst=Array.from({length:18},(_,i)=>{
-        const vs=filtered.map(r=>({s:r.scores[i],p:COURSES[r.course].holes[i]})).filter(v=>v.s>0);
-        if(!vs.length)return{hole:i+1,delta:0};
-        return{hole:i+1,delta:parseFloat((vs.reduce((s,v)=>s+(v.s-v.p),0)/vs.length).toFixed(2))};
-      }).sort((a,b)=>b.delta-a.delta).slice(0,5);
+    const holeBtns=Array.from({length:18},(_,i)=>
+      `<button onclick="window._setStatsHole(${i})" style="padding:4px 10px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:${statsHole===i?"#15803d":"#e2e8f0"};color:${statsHole===i?"#fff":"#374151"}">H${i+1}</button>`
+    ).join("");
 
-      // hole chart data
-      let holeSection="";
-      const holeBtns=Array.from({length:18},(_,i)=>
-        `<button onclick="setStatsHole(${i})" style="padding:4px 10px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:${statsHole===i?"#15803d":"#e2e8f0"};color:${statsHole===i?"#fff":"#374151"}">H${i+1}</button>`
-      ).join("");
-
-      if(statsHole!==null){
-        const hd=filtered.filter(r=>r.scores[statsHole]>0).map(r=>({date:r.date,Slag:r.scores[statsHole],Par:COURSES[r.course].holes[statsHole]}));
-        if(hd.length>=1){
-          const hvals=hd.map(d=>d.Slag);
-          const hpar=COURSES[rounds[0].course].holes[statsHole];
-          const havg=(hvals.reduce((a,b)=>a+b,0)/hvals.length).toFixed(1);
-          const hbest=Math.min(...hvals);
-          holeSection=`
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-              ${[["Snitt",havg],["Best",hbest],["Par",hpar]].map(([l,v])=>`<div style="text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px"><div style="font-size:11px;color:#64748b">${l}</div><div style="font-weight:700;font-size:16px">${v}</div></div>`).join("")}
-            </div>
-            ${lineChart(hd,"Slag","Par","#2563eb",160)}`;
-        } else {
-          holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">Ingen data enna.</p>`;
-        }
+    let holeSection="";
+    if(statsHole!==null){
+      const hd=filtered.filter(r=>r.scores[statsHole]>0).map(r=>({date:r.date,Slag:r.scores[statsHole],Par:COURSES[r.course].holes[statsHole]}));
+      if(hd.length>=1){
+        const hvals=hd.map(d=>d.Slag);
+        const hpar=COURSES[statsFilter].holes[statsHole];
+        const havg=(hvals.reduce((a,b)=>a+b,0)/hvals.length).toFixed(1);
+        holeSection=`
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+            ${[["Snitt",havg],["Best",Math.min(...hvals)],["Par",hpar]].map(([l,v])=>`<div style="text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px"><div style="font-size:11px;color:#64748b">${l}</div><div style="font-weight:700;font-size:16px">${v}</div></div>`).join("")}
+          </div>
+          ${lineChart(hd,"Slag","Par","#2563eb",160)}`;
       } else {
-        holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:8px">Trykk pa et hull for a se grafen.</p>`;
+        holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">Ingen data enna.</p>`;
       }
+    } else {
+      holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:8px">Trykk pa et hull for a se grafen.</p>`;
+    }
 
-      const histRows=(!filtered.length)
-        ? `<p style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">Ingen runder pa denne banen enna.</p>`
-        : [...filtered].reverse().map(r=>`
+    const histRows=!filtered.length
+      ?`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">Ingen runder pa denne banen enna.</p>`
+      :[...filtered].reverse().map(r=>`
         <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9">
           <div><span style="font-weight:600;font-size:13px">${fmtDate(r.date)}</span><span style="font-size:11px;color:#94a3b8;margin-left:6px">${r.courseName}</span></div>
           <div style="display:flex;gap:10px;align-items:center">
             <span style="font-weight:700;font-size:15px">${r.total}</span>
             <span style="font-weight:700;font-size:13px;color:${diffColor(r.diff)}">${diffLabel(r.diff)}</span>
-            <button onclick="deleteRound(${r.id})" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:18px;padding:0;line-height:1">x</button>
+            <button onclick="window._deleteRound('${r.firestoreId}')" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:18px;padding:0;line-height:1">x</button>
           </div>
         </div>`).join("");
 
-      main=`
-        ${baneFilter}
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px">
-          ${statBox("Runder",os.count,"#2563eb")}
-          ${statBox("Snitt",os.diffs.length?Number(os.avg)>0?"+"+os.avg:os.avg:"-","#d97706")}
-          ${statBox("Best",os.diffs.length?diffLabel(os.best):"-","#16a34a")}
-          ${statBox("HCP",hcp!==null?hcp:"-","#7c3aed")}
-        </div>
-        ${hcp===null?`<p style="font-size:12px;color:#94a3b8;margin-bottom:12px;text-align:center">Trenger minst 3 runder for handicap-beregning</p>`:""}
-        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Totalt antall slag per runde</div>${filtered.length>=2?lineChart(filtered.map(r=>({date:r.date,Slag:r.total,Par:r.par})),"Slag","Par","#15803d",180):'<p style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">Trenger minst 2 runder for graf.</p>'}`)}
-        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:4px">Verstinghull</div>
-          <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">Topp 5 hull med hoyest snitt over par</div>
-          ${worst.map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-            <div style="width:44px;font-weight:700;font-size:13px">Hull ${h.hole}</div>
-            <div style="flex:1;background:#f1f5f9;border-radius:6px;height:18px;overflow:hidden">
-              <div style="width:${Math.max(4,Math.min(100,(h.delta/3)*100))}%;background:${h.delta>1?"#ef4444":h.delta>0.5?"#f97316":"#fbbf24"};height:100%;border-radius:6px"></div>
-            </div>
-            <div style="width:52px;text-align:right;font-size:13px;font-weight:700;color:${h.delta>0?"#dc2626":"#16a34a"}">${h.delta>0?"+":""}${h.delta}</div>
-          </div>`).join("")}`)}
-        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:10px">Graf per hull</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${holeBtns}</div>
-          ${holeSection}`)}
-        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Rundehistorikk</div>${histRows}`,0)}`;
-    }
+    main=`
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        ${Object.entries(COURSES).map(([k,c])=>`<button onclick="window._setStatsFilter('${k}')" style="flex:1;padding:7px 0;border-radius:8px;border:2px solid ${statsFilter===k?"#15803d":"#cbd5e1"};background:${statsFilter===k?"#dcfce7":"#fff"};font-weight:600;font-size:13px;cursor:pointer">${c.name}</button>`).join("")}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:${hcp===null&&diffs.length<3?4:14}px">
+        ${statBox("Runder",filtered.length,"#2563eb")}
+        ${statBox("Snitt",avg!==null?(Number(avg)>0?"+"+avg:avg):"-","#d97706")}
+        ${statBox("Best",best!==null?diffLabel(best):"-","#16a34a")}
+        ${statBox("HCP",hcp!==null?hcp:"-","#7c3aed")}
+      </div>
+      ${hcp===null&&rounds.length<3?`<p style="font-size:12px;color:#94a3b8;margin-bottom:12px;text-align:center">Trenger minst 3 runder for handicap-beregning</p>`:""}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Totalt antall slag per runde</div>${filtered.length>=2?lineChart(filtered.map(r=>({date:r.date,Slag:r.total,Par:r.par})),"Slag","Par","#15803d",180):'<p style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">Trenger minst 2 runder for graf.</p>'}`)}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:4px">Verstinghull</div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">Topp 5 hull med hoyest snitt over par</div>
+        ${worst.slice(0,5).map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:44px;font-weight:700;font-size:13px">Hull ${h.hole}</div>
+          <div style="flex:1;background:#f1f5f9;border-radius:6px;height:18px;overflow:hidden">
+            <div style="width:${Math.max(4,Math.min(100,(h.delta/3)*100))}%;background:${h.delta>1?"#ef4444":h.delta>0.5?"#f97316":"#fbbf24"};height:100%;border-radius:6px"></div>
+          </div>
+          <div style="width:52px;text-align:right;font-size:13px;font-weight:700;color:${h.delta>0?"#dc2626":"#16a34a"}">${h.delta>0?"+":""}${h.delta}</div>
+        </div>`).join("")}`)}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:10px">Graf per hull</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${holeBtns}</div>
+        ${holeSection}`)}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Rundehistorikk</div>${histRows}`,0)}`;
   }
 
   if(view==="achievements"){
     const rows=ACHIEVEMENTS.map((a,i)=>{
       const ok=a.check(rounds);
       return `<div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:${i<ACHIEVEMENTS.length-1?"1px solid #f1f5f9":"none"};opacity:${ok?1:0.4};background:${ok?"#fff":"#f8fafc"}">
-        <div style="width:36px;height:36px;border-radius:50%;background:${ok?"#dcfce7":"#e2e8f0"};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:${ok?"#15803d":"#94a3b8"};flex-shrink:0">${a.badge}</div>
+        <div style="width:36px;height:36px;border-radius:50%;background:${ok?"#dcfce7":"#e2e8f0"};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:${ok?"#15803d":"#94a3b8"};flex-shrink:0">${a.badge}</div>
         <div>
           <div style="font-weight:700;font-size:14px;color:${ok?"#1e293b":"#94a3b8"}">${a.title}</div>
           <div style="font-size:12px;color:#94a3b8;margin-top:2px">${a.desc}</div>
@@ -257,55 +390,28 @@ function render() {
 
   document.getElementById("app").innerHTML=`
     <div style="max-width:520px;margin:0 auto;padding:12px 16px;background:#f8fafc;min-height:100vh">
-      <div style="text-align:center;margin-bottom:14px">
-        <div style="font-size:22px;font-weight:700;color:#15803d">Sola GK Scoretracker</div>
-        ${hcp!==null?`<div style="margin-top:4px;font-size:13px;color:#64748b">Handicap-indeks: <strong style="color:#15803d;font-size:16px">${hcp}</strong></div>`:""}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <div style="font-size:20px;font-weight:700;color:#15803d">Sola GK Scoretracker</div>
+          ${hcp!==null?`<div style="font-size:13px;color:#64748b">Handicap-indeks: <strong style="color:#15803d">${hcp}</strong></div>`:""}
+        </div>
+        <button onclick="window._signOut()" style="font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#64748b;cursor:pointer">Logg ut</button>
       </div>
       ${notices.length?`<div style="background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:12px;margin-bottom:14px">${notices.map(n=>`<div style="font-weight:600;color:#854d0e;font-size:14px;margin-bottom:4px">${n}</div>`).join("")}</div>`:""}
       <div style="display:flex;gap:6px;margin-bottom:14px">
-        ${btn("Ny runde",view==="runde","setView('runde')")}
-        ${btn("Statistikk",view==="statistikk","setView('statistikk')")}
-        ${btn("Achievements",view==="achievements","setView('achievements')")}
+        ${["runde","statistikk","achievements"].map(v=>`<button onclick="window._setView('${v}')" style="flex:1;padding:8px 0;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:13px;background:${view===v?"#15803d":"#e2e8f0"};color:${view===v?"#fff":"#374151"}">${v==="runde"?"Ny runde":v.charAt(0).toUpperCase()+v.slice(1)}</button>`).join("")}
       </div>
       ${main}
     </div>`;
-}
 
-// ── Actions ─────────────────────────────────────────────────────
-function setView(v)         { setState({view:v}); }
-function setCourse(k)       { setState({courseKey:k,scores:Array(18).fill("")}); }
-function setStatsFilter(k) { setState({statsFilter:k,statsHole:null}); }
-function setStatsHole(i)    { setState(s=>({statsHole:s.statsHole===i?null:i})); }
-function setScore(i,val){
-  const n=parseInt(val);
-  if(val===""|| (n>=1&&n<=15)){
-    const scores=[...state.scores]; scores[i]=val===""?"":String(n); setState({scores});
-  }
-}
-function deleteRound(id){
-  if(confirm("Slett denne runden?")){
-    const rounds=state.rounds.filter(r=>r.id!==id); saveRounds(rounds); setState({rounds});
-  }
-}
-function saveRound(){
-  const {courseKey,scores,rounds}=state;
-  const course=COURSES[courseKey];
-  const total=scores.reduce((s,v)=>s+(parseInt(v)||0),0);
-  const diff=total-course.par;
-  const round={id:Date.now(),date:new Date().toISOString(),course:courseKey,courseName:course.name,scores:scores.map(v=>parseInt(v)||0),total,par:course.par,diff};
-  const updated=[...rounds,round];
-  const msgs=[];
-  const prev=rounds.filter(r=>r.course===courseKey);
-  if(!prev.length) msgs.push("Forste runde pa "+course.name+"!");
-  else if(total<Math.min(...prev.map(r=>r.total))) msgs.push("Ny personlig rekord pa "+course.name+": "+total+" slag!");
-  const hRec=[];
-  scores.forEach((s,i)=>{ const v=parseInt(s),pb=rounds.filter(r=>r.course===courseKey).map(r=>r.scores[i]).filter(x=>x>0); if(pb.length&&v<Math.min(...pb))hRec.push("hull "+(i+1)); });
-  if(hRec.length) msgs.push("Ny rekord pa "+hRec.join(", ")+"!");
-  const prevIds=ACHIEVEMENTS.filter(a=>a.check(rounds)).map(a=>a.id);
-  ACHIEVEMENTS.filter(a=>!prevIds.includes(a.id)&&a.check(updated)).forEach(a=>msgs.push("Achievement: "+a.title+"!"));
-  saveRounds(updated);
-  setState({rounds:updated,scores:Array(18).fill(""),notices:msgs});
-  if(msgs.length) setTimeout(()=>setState({notices:[]}),5000);
+  window._setView = setView;
+  window._setCourse = setCourse;
+  window._setStatsFilter = setStatsFilter;
+  window._setStatsHole = setStatsHole;
+  window._setScore = setScore;
+  window._saveRound = saveRound;
+  window._deleteRound = deleteRound;
+  window._signOut = () => signOut(auth);
 }
 
 render();
