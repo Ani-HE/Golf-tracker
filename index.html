@@ -4,434 +4,300 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sola GK Scoretracker</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.5.0/Recharts.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.21.4/babel.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #f8fafc; font-family: system-ui, sans-serif; }
+    body { background: #f8fafc; font-family: system-ui, sans-serif; color: #1e293b; }
+    button { font-family: inherit; }
     input[type=number]::-webkit-inner-spin-button,
     input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
-    input[type=number] { -moz-appearance: textfield; }
+    input[type=number] { -moz-appearance: textfield; font-family: inherit; }
   </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useMemo, useEffect } = React;
-    const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } = Recharts;
+<div id="app"></div>
+<script>
+const COURSES = {
+  forus:        { name: "Forus (Par 72)",        par: 72, cr: 72.9, slope: 144, holes: [4,4,3,4,4,4,4,3,4,5,4,4,3,4,5,4,3,4] },
+  solastranden: { name: "Solastranden (Par 69)", par: 69, cr: 68.2, slope: 126, holes: [4,4,3,4,4,3,4,4,4,3,4,3,4,4,3,5,3,4] },
+};
 
-    const COURSES = {
-      forus:        { name: "Forus (Par 72)",        totalPar: 72, holes: [4,4,3,4,4,4,4,3,4,5,4,4,3,4,5,4,3,4] },
-      solastranden: { name: "Solastranden (Par 69)", totalPar: 69, holes: [4,4,3,4,4,3,4,4,4,3,4,3,4,4,3,5,3,4] },
-    };
+const ACHIEVEMENTS = [
+  { id:"r1",  badge:"1",   title:"Forste runde",   desc:"Registrerte sin forste runde",                   check: r => r.length >= 1 },
+  { id:"r5",  badge:"5",   title:"5 runder",        desc:"Fullforte 5 runder",                             check: r => r.length >= 5 },
+  { id:"r10", badge:"10",  title:"10 runder",       desc:"Fullforte 10 runder",                            check: r => r.length >= 10 },
+  { id:"bi",  badge:"B",   title:"Forste birdie",   desc:"Slo sin forste birdie",                          check: r => r.some(rd => rd.scores.some((s,i) => s === COURSES[rd.course].holes[i]-1)) },
+  { id:"ea",  badge:"E",   title:"Forste eagle",    desc:"Slo sin forste eagle",                           check: r => r.some(rd => rd.scores.some((s,i) => s <= COURSES[rd.course].holes[i]-2)) },
+  { id:"pr",  badge:"P",   title:"Par-runde",       desc:"Fullforte en runde pa par eller bedre",          check: r => r.some(rd => rd.diff <= 0) },
+  { id:"u90", badge:"90",  title:"Under 90",        desc:"Slo under 90 slag pa Forus",                    check: r => r.some(rd => rd.course==="forus" && rd.total<90) },
+  { id:"u80", badge:"80",  title:"Under 80",        desc:"Slo under 80 slag pa Forus",                    check: r => r.some(rd => rd.course==="forus" && rd.total<80) },
+  { id:"up",  badge:"UP",  title:"Pa vei opp",      desc:"3 runder pa rad med lavere score enn forrige",   check: r => { if(r.length<3)return false; const l=r.slice(-3); return l[1].total<l[0].total&&l[2].total<l[1].total; } },
+];
 
-    const ACHIEVEMENTS = [
-      { id:"first_round",  icon:"golf",      title:"Forste runde",   desc:"Registrerte sin forste runde",                  check: r => r.length >= 1 },
-      { id:"five_rounds",  icon:"star",      title:"5 runder",       desc:"Fullforte 5 runder",                            check: r => r.length >= 5 },
-      { id:"ten_rounds",   icon:"ten",       title:"10 runder",      desc:"Fullforte 10 runder",                           check: r => r.length >= 10 },
-      { id:"first_birdie", icon:"birdie",    title:"Forste birdie",  desc:"Slo sin forste birdie",                         check: r => r.some(rd => rd.scores.some((s,i) => s === COURSES[rd.course].holes[i] - 1)) },
-      { id:"first_eagle",  icon:"eagle",     title:"Orn!",           desc:"Slo sin forste eagle",                          check: r => r.some(rd => rd.scores.some((s,i) => s <= COURSES[rd.course].holes[i] - 2)) },
-      { id:"par_round",    icon:"target",    title:"Par-runde",      desc:"Fullforte en runde pa par eller bedre",         check: r => r.some(rd => rd.diff <= 0) },
-      { id:"under_90",     icon:"nine",      title:"Under 90",       desc:"Slo under 90 slag pa Forus",                   check: r => r.some(rd => rd.course === "forus" && rd.total < 90) },
-      { id:"under_80",     icon:"fire",      title:"Under 80",       desc:"Slo under 80 slag pa Forus",                   check: r => r.some(rd => rd.course === "forus" && rd.total < 80) },
-      { id:"improving",    icon:"trending",  title:"Pa vei opp",     desc:"3 runder pa rad med lavere score enn forrige",  check: r => {
-        if (r.length < 3) return false;
-        const l = r.slice(-3);
-        return l[1].total < l[0].total && l[2].total < l[1].total;
-      }},
-    ];
+function loadRounds() { try { const s=localStorage.getItem("sola_gk_v3"); return s?JSON.parse(s):[]; } catch(e){return[];} }
+function saveRounds(r) { try { localStorage.setItem("sola_gk_v3", JSON.stringify(r)); } catch(e){} }
+function fmtDate(d) { return new Date(d).toLocaleDateString("nb-NO",{day:"2-digit",month:"short"}); }
+function diffLabel(d) { return d===0?"E":d>0?"+"+d:""+d; }
+function diffColor(d) { return d<0?"#16a34a":d===0?"#2563eb":"#dc2626"; }
+function calcHCP(rounds) {
+  if(rounds.length<3) return null;
+  const use=rounds.slice(-20);
+  const diffs=use.map(r=>((r.total-COURSES[r.course].cr)*113)/COURSES[r.course].slope);
+  diffs.sort((a,b)=>a-b);
+  const n=use.length, take=n<=6?1:n<=8?2:n<=11?3:n<=14?4:n<=16?5:n<=18?6:8;
+  return (diffs.slice(0,take).reduce((a,b)=>a+b,0)/take*0.96).toFixed(1);
+}
 
-    const ICON_MAP = {
-      golf: "Golf", star: "Stjerne", ten: "10", birdie: "Birdie", eagle: "Eagle",
-      target: "Mal", nine: "Under 90", fire: "Under 80", trending: "Fremgang",
-    };
+// ── SVG Line Chart ──────────────────────────────────────────────
+function lineChart(data, key, parKey, color, h) {
+  if(!data||data.length<2) return '<p style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">Trenger minst 2 runder for graf.</p>';
+  const W=460, H=h||160, PL=32, PR=12, PT=10, PB=28;
+  const vals=data.map(d=>d[key]);
+  const pars=parKey?data.map(d=>d[parKey]):null;
+  const allVals=pars?[...vals,...pars]:vals;
+  const minV=Math.min(...allVals)-1, maxV=Math.max(...allVals)+1;
+  const xS=(i)=>PL+(i/(data.length-1))*(W-PL-PR);
+  const yS=(v)=>PT+(1-(v-minV)/(maxV-minV))*(H-PT-PB);
+  const pts=vals.map((v,i)=>xS(i)+","+yS(v)).join(" ");
+  const parPts=pars?pars.map((v,i)=>xS(i)+","+yS(v)).join(" "):null;
+  const yTicks=4;
+  let ticks="", labels="";
+  for(let i=0;i<=yTicks;i++){
+    const v=Math.round(minV+(maxV-minV)*(i/yTicks));
+    const y=yS(v);
+    ticks+=`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#f1f5f9" stroke-width="1"/>`;
+    labels+=`<text x="${PL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#94a3b8">${v}</text>`;
+  }
+  let xLabels="";
+  data.forEach((d,i)=>{ if(i===0||i===data.length-1||data.length<=6){ xLabels+=`<text x="${xS(i)}" y="${H-4}" text-anchor="middle" font-size="10" fill="#94a3b8">${fmtDate(d.date||"")}</text>`; }});
+  let dots="";
+  vals.forEach((v,i)=>{ dots+=`<circle cx="${xS(i)}" cy="${yS(v)}" r="4" fill="${color}"/>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">${ticks}${labels}${xLabels}
+    ${parPts?`<polyline points="${parPts}" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 4"/>`:""}
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5"/>
+    ${dots}</svg>`;
+}
 
-    function fmtDate(d) {
-      return new Date(d).toLocaleDateString("nb-NO", { day:"2-digit", month:"short", year:"2-digit" });
+// ── State ───────────────────────────────────────────────────────
+let state = {
+  view: "runde",
+  courseKey: "forus",
+  scores: Array(18).fill(""),
+  rounds: loadRounds(),
+  statsHole: null,
+  notices: [],
+};
+
+function setState(patch) {
+  Object.assign(state, typeof patch==="function"?patch(state):patch);
+  render();
+}
+
+// ── Render ──────────────────────────────────────────────────────
+function render() {
+  const { view, courseKey, scores, rounds, statsHole, notices } = state;
+  const course = COURSES[courseKey];
+  const total  = scores.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const diff   = total - course.par;
+  const filled = scores.every(v=>parseInt(v)>0);
+  const hcp    = calcHCP(rounds);
+  const unlockedAch = ACHIEVEMENTS.filter(a=>a.check(rounds));
+
+  // ── helpers ──
+  const btn = (label, active, onclick, extra="") =>
+    `<button onclick="${onclick}" style="flex:1;padding:8px 0;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:13px;background:${active?"#15803d":"#e2e8f0"};color:${active?"#fff":"#374151"};${extra}">${label}</button>`;
+
+  const card = (content, mb=14) =>
+    `<div style="background:#fff;border-radius:12px;padding:12px;margin-bottom:${mb}px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">${content}</div>`;
+
+  const statBox = (lbl,val,col) =>
+    `<div style="background:#fff;border-radius:10px;padding:10px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+      <div style="font-size:11px;color:#64748b;font-weight:600">${lbl}</div>
+      <div style="font-size:17px;font-weight:800;color:${col}">${val}</div>
+    </div>`;
+
+  // ── Hull-grid ──
+  let grid = "";
+  for(let half=0;half<2;half++){
+    if(half===1) grid+=`<div style="height:1px;background:#e2e8f0;margin:8px 0"></div>`;
+    grid+=`<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:4px">`;
+    for(let j=0;j<9;j++){
+      const i=half*9+j, par=course.holes[i], val=parseInt(scores[i]), delta=val-par;
+      let bg="#f1f5f9";
+      if(val){ if(delta<=-2)bg="#fef08a";else if(delta===-1)bg="#bbf7d0";else if(delta===0)bg="#e0f2fe";else if(delta===1)bg="#fecaca";else bg="#f87171"; }
+      grid+=`<div style="text-align:center">
+        <div style="font-size:9px;color:#64748b;font-weight:600">H${i+1}</div>
+        <div style="font-size:9px;color:#94a3b8">p${par}</div>
+        <input type="number" min="1" max="15" value="${scores[i]}" oninput="setScore(${i},this.value)"
+          style="width:100%;text-align:center;padding:4px 0;border-radius:6px;border:1px solid #e2e8f0;background:${bg};font-weight:700;font-size:15px">
+      </div>`;
     }
+    grid+=`</div>`;
+  }
 
-    function calcHCP(rounds) {
-      if (rounds.length < 3) return null;
-      const use = rounds.slice(-20);
-      const diffs = use.map(r => {
-        const cr = r.course === "forus" ? 72.9 : 68.2;
-        const sl = r.course === "forus" ? 144  : 126;
-        return ((r.total - cr) * 113) / sl;
-      });
-      diffs.sort((a, b) => a - b);
-      const n = use.length;
-      const take = n<=6?1:n<=8?2:n<=11?3:n<=14?4:n<=16?5:n<=18?6:8;
-      const avg = diffs.slice(0, take).reduce((a, b) => a + b, 0) / take;
-      return (avg * 0.96).toFixed(1);
-    }
+  // ── Views ──
+  let main = "";
 
-    const diffLabel = d => d === 0 ? "E" : d > 0 ? "+" + d : "" + d;
-    const diffColor = d => d < 0 ? "#16a34a" : d === 0 ? "#2563eb" : "#dc2626";
+  if(view==="runde"){
+    main=`
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        ${Object.entries(COURSES).map(([k,c])=>`<button onclick="setCourse('${k}')" style="flex:1;padding:7px 0;border-radius:8px;border:2px solid ${courseKey===k?"#15803d":"#cbd5e1"};background:${courseKey===k?"#dcfce7":"#fff"};font-weight:600;font-size:13px;cursor:pointer">${c.name}</button>`).join("")}
+      </div>
+      ${card(grid)}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:11px">
+        ${[["#fef08a","Eagle-"],["#bbf7d0","Birdie"],["#e0f2fe","Par"],["#fecaca","Bogey"],["#f87171","2+ over"]].map(([c,l])=>`<span style="background:${c};padding:2px 8px;border-radius:10px;color:#374151;font-weight:500">${l}</span>`).join("")}
+      </div>
+      ${total>0?`<div style="background:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+        <span style="font-weight:600;color:#374151">Total: <strong style="font-size:20px">${total}</strong></span>
+        <span style="font-weight:700;font-size:18px;color:${diffColor(diff)}">${diffLabel(diff)}</span>
+      </div>`:""}
+      <button onclick="saveRound()" ${filled?"":"disabled"} style="width:100%;padding:12px 0;border-radius:10px;border:none;background:${filled?"#15803d":"#e2e8f0"};color:${filled?"#fff":"#94a3b8"};font-weight:700;font-size:15px;cursor:${filled?"pointer":"default"}">Lagre runde</button>`;
+  }
 
-    function App() {
-      const [view,       setView]       = useState("Ny runde");
-      const [courseKey,  setCourseKey]  = useState("forus");
-      const [scores,     setScores]     = useState(Array(18).fill(""));
-      const [rounds,     setRounds]     = useState(() => {
-        try { const s = localStorage.getItem("sola_gk_rounds"); return s ? JSON.parse(s) : []; }
-        catch(e) { return []; }
-      });
-      const [savedMsg,   setSavedMsg]   = useState(false);
-      const [notices,    setNotices]    = useState([]);
-      const [statsHole,  setStatsHole]  = useState(null);
+  if(view==="statistikk"){
+    if(!rounds.length){
+      main=`<p style="text-align:center;color:#64748b;margin-top:40px">Ingen runder lagret enna.</p>`;
+    } else {
+      const os={ count:rounds.length, diffs:rounds.map(r=>r.diff) };
+      os.avg=(os.diffs.reduce((a,b)=>a+b,0)/os.diffs.length).toFixed(1);
+      os.best=Math.min(...os.diffs); os.worst=Math.max(...os.diffs);
 
-      useEffect(() => {
-        try { localStorage.setItem("sola_gk_rounds", JSON.stringify(rounds)); } catch(e) {}
-      }, [rounds]);
+      // worst holes
+      const worst=Array.from({length:18},(_,i)=>{
+        const vs=rounds.map(r=>({s:r.scores[i],p:COURSES[r.course].holes[i]})).filter(v=>v.s>0);
+        if(!vs.length)return{hole:i+1,delta:0};
+        return{hole:i+1,delta:parseFloat((vs.reduce((s,v)=>s+(v.s-v.p),0)/vs.length).toFixed(2))};
+      }).sort((a,b)=>b.delta-a.delta).slice(0,5);
 
-      const course       = COURSES[courseKey];
-      const totalStrokes = scores.reduce((s, v) => s + (parseInt(v) || 0), 0);
-      const diff         = totalStrokes - course.totalPar;
-      const allFilled    = scores.every(v => parseInt(v) > 0);
+      // hole chart data
+      let holeSection="";
+      const holeBtns=Array.from({length:18},(_,i)=>
+        `<button onclick="setStatsHole(${i})" style="padding:4px 10px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:${statsHole===i?"#15803d":"#e2e8f0"};color:${statsHole===i?"#fff":"#374151"}">H${i+1}</button>`
+      ).join("");
 
-      function setScore(i, val) {
-        const n = parseInt(val);
-        if (val === "" || (n >= 1 && n <= 15)) {
-          const s = [...scores]; s[i] = val === "" ? "" : String(n); setScores(s);
+      if(statsHole!==null){
+        const hd=rounds.filter(r=>r.scores[statsHole]>0).map(r=>({date:r.date,Slag:r.scores[statsHole],Par:COURSES[r.course].holes[statsHole]}));
+        if(hd.length>=1){
+          const hvals=hd.map(d=>d.Slag);
+          const hpar=COURSES[rounds[0].course].holes[statsHole];
+          const havg=(hvals.reduce((a,b)=>a+b,0)/hvals.length).toFixed(1);
+          const hbest=Math.min(...hvals);
+          holeSection=`
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+              ${[["Snitt",havg],["Best",hbest],["Par",hpar]].map(([l,v])=>`<div style="text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px"><div style="font-size:11px;color:#64748b">${l}</div><div style="font-weight:700;font-size:16px">${v}</div></div>`).join("")}
+            </div>
+            ${lineChart(hd,"Slag","Par","#2563eb",160)}`;
+        } else {
+          holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">Ingen data enna.</p>`;
         }
+      } else {
+        holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:8px">Trykk pa et hull for a se grafen.</p>`;
       }
 
-      function saveRound() {
-        const round = {
-          id: Date.now(), date: new Date().toISOString(),
-          course: courseKey, courseName: course.name,
-          scores: scores.map(v => parseInt(v) || 0),
-          total: totalStrokes, par: course.totalPar, diff,
-        };
-        const updated = [...rounds, round];
-        const msgs = [];
+      const histRows=[...rounds].reverse().map(r=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9">
+          <div><span style="font-weight:600;font-size:13px">${fmtDate(r.date)}</span><span style="font-size:11px;color:#94a3b8;margin-left:6px">${r.courseName}</span></div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span style="font-weight:700;font-size:15px">${r.total}</span>
+            <span style="font-weight:700;font-size:13px;color:${diffColor(r.diff)}">${diffLabel(r.diff)}</span>
+            <button onclick="deleteRound(${r.id})" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:18px;padding:0;line-height:1">x</button>
+          </div>
+        </div>`).join("");
 
-        const prev = rounds.filter(r => r.course === courseKey);
-        if (!prev.length) {
-          msgs.push("Forste runde pa " + course.name + "!");
-        } else if (totalStrokes < Math.min(...prev.map(r => r.total))) {
-          msgs.push("Ny personlig rekord pa " + course.name + ": " + totalStrokes + " slag!");
-        }
-
-        const hRec = [];
-        scores.forEach((s, i) => {
-          const val = parseInt(s);
-          const pb = rounds.filter(r => r.course === courseKey).map(r => r.scores[i]).filter(v => v > 0);
-          if (pb.length && val < Math.min(...pb)) hRec.push("Hull " + (i + 1));
-        });
-        if (hRec.length) msgs.push("Ny rekord pa " + hRec.join(", ") + "!");
-
-        const prevIds = ACHIEVEMENTS.filter(a => a.check(rounds)).map(a => a.id);
-        ACHIEVEMENTS.filter(a => !prevIds.includes(a.id) && a.check(updated))
-          .forEach(a => msgs.push("Achievement: " + a.title + "!"));
-
-        setRounds(updated);
-        setScores(Array(18).fill(""));
-        if (msgs.length) { setNotices(msgs); setTimeout(() => setNotices([]), 5000); }
-        setSavedMsg(true);
-        setTimeout(() => setSavedMsg(false), 2500);
-      }
-
-      function deleteRound(id) {
-        if (confirm("Slett denne runden?")) setRounds(prev => prev.filter(r => r.id !== id));
-      }
-
-      const hcp         = useMemo(() => calcHCP(rounds), [rounds]);
-      const unlockedAch = useMemo(() => ACHIEVEMENTS.filter(a => a.check(rounds)), [rounds]);
-
-      const worstHoles = useMemo(() => {
-        if (!rounds.length) return [];
-        return Array.from({ length: 18 }, (_, i) => {
-          const vals = rounds.map(r => ({ score: r.scores[i], par: COURSES[r.course].holes[i] })).filter(v => v.score > 0);
-          if (!vals.length) return { hole: i + 1, delta: 0 };
-          const delta = vals.reduce((s, v) => s + (v.score - v.par), 0) / vals.length;
-          return { hole: i + 1, delta: parseFloat(delta.toFixed(2)) };
-        }).sort((a, b) => b.delta - a.delta);
-      }, [rounds]);
-
-      const totalChartData = rounds.map(r => ({ name: fmtDate(r.date), Slag: r.total, Par: r.par }));
-      const holeChartData  = statsHole !== null
-        ? rounds.filter(r => r.scores[statsHole] > 0).map(r => ({
-            name: fmtDate(r.date),
-            Slag: r.scores[statsHole],
-            Par:  COURSES[r.course].holes[statsHole],
-          }))
-        : [];
-
-      const holeStats = useMemo(() => {
-        if (statsHole === null || !rounds.length) return null;
-        const vals = rounds.map(r => r.scores[statsHole]).filter(v => v > 0);
-        if (!vals.length) return null;
-        return {
-          avg:  (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1),
-          best: Math.min(...vals),
-          par:  COURSES[rounds[0].course].holes[statsHole],
-        };
-      }, [statsHole, rounds]);
-
-      const overallStats = useMemo(() => {
-        if (!rounds.length) return null;
-        const d = rounds.map(r => r.diff);
-        return {
-          avg:   (d.reduce((a, b) => a + b, 0) / d.length).toFixed(1),
-          best:  Math.min(...d),
-          worst: Math.max(...d),
-          count: rounds.length,
-        };
-      }, [rounds]);
-
-      const W = ({ children, mb }) => (
-        React.createElement("div", {
-          style: { background:"#fff", borderRadius:12, padding:12, marginBottom: mb !== undefined ? mb : 14, boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }
-        }, children)
-      );
-
-      return (
-        React.createElement("div", { style:{ maxWidth:520, margin:"0 auto", padding:"12px 16px", background:"#f8fafc", minHeight:"100vh" } },
-
-          React.createElement("div", { style:{ textAlign:"center", marginBottom:14 } },
-            React.createElement("div", { style:{ fontSize:22, fontWeight:700, color:"#15803d" } }, "Sola GK Scoretracker"),
-            hcp !== null && React.createElement("div", { style:{ marginTop:4, fontSize:13, color:"#64748b" } },
-              "Handicap-indeks: ",
-              React.createElement("strong", { style:{ color:"#15803d", fontSize:16 } }, hcp)
-            )
-          ),
-
-          notices.length > 0 && React.createElement("div", {
-            style:{ background:"#fefce8", border:"1px solid #fde047", borderRadius:12, padding:12, marginBottom:14 }
-          }, notices.map((n, i) =>
-            React.createElement("div", { key:i, style:{ fontWeight:600, color:"#854d0e", fontSize:14, marginBottom: i < notices.length - 1 ? 4 : 0 } }, n)
-          )),
-
-          React.createElement("div", { style:{ display:"flex", gap:6, marginBottom:14 } },
-            ["Ny runde","Statistikk","Achievements"].map(v =>
-              React.createElement("button", {
-                key: v, onClick: () => setView(v),
-                style:{
-                  flex:1, padding:"8px 0", borderRadius:8, border:"none", cursor:"pointer",
-                  fontWeight:600, fontSize:13,
-                  background: view === v ? "#15803d" : "#e2e8f0",
-                  color:      view === v ? "#fff"     : "#374151",
-                }
-              }, v)
-            )
-          ),
-
-          view === "Ny runde" && React.createElement("div", null,
-            React.createElement("div", { style:{ display:"flex", gap:8, marginBottom:14 } },
-              Object.entries(COURSES).map(([key, c]) =>
-                React.createElement("button", {
-                  key, onClick: () => { setCourseKey(key); setScores(Array(18).fill("")); },
-                  style:{
-                    flex:1, padding:"7px 0", borderRadius:8, border:"2px solid",
-                    borderColor: courseKey === key ? "#15803d" : "#cbd5e1",
-                    background:  courseKey === key ? "#dcfce7" : "#fff",
-                    fontWeight:600, fontSize:13, cursor:"pointer", color:"#1e293b",
-                  }
-                }, c.name)
-              )
-            ),
-
-            React.createElement(W, null,
-              [0, 9].map(start =>
-                React.createElement("div", { key: start },
-                  start === 9 && React.createElement("div", { style:{ height:1, background:"#e2e8f0", margin:"8px 0" } }),
-                  React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(9,1fr)", gap:4 } },
-                    course.holes.slice(start, start + 9).map((par, j) => {
-                      const i = start + j;
-                      const val = parseInt(scores[i]);
-                      const delta = val - par;
-                      let bg = "#f1f5f9";
-                      if (val) {
-                        if      (delta <= -2) bg = "#fef08a";
-                        else if (delta === -1) bg = "#bbf7d0";
-                        else if (delta ===  0) bg = "#e0f2fe";
-                        else if (delta ===  1) bg = "#fecaca";
-                        else                   bg = "#f87171";
-                      }
-                      return React.createElement("div", { key: i, style:{ textAlign:"center" } },
-                        React.createElement("div", { style:{ fontSize:9, color:"#64748b", fontWeight:600 } }, "H" + (i + 1)),
-                        React.createElement("div", { style:{ fontSize:9, color:"#94a3b8" } }, "p" + par),
-                        React.createElement("input", {
-                          type:"number", min:"1", max:"15",
-                          value: scores[i],
-                          onChange: e => setScore(i, e.target.value),
-                          style:{ width:"100%", textAlign:"center", padding:"4px 0", borderRadius:6, border:"1px solid #e2e8f0", background:bg, fontWeight:700, fontSize:15 }
-                        })
-                      );
-                    })
-                  )
-                )
-              )
-            ),
-
-            React.createElement("div", { style:{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12, fontSize:11 } },
-              [["#fef08a","Eagle-"],["#bbf7d0","Birdie"],["#e0f2fe","Par"],["#fecaca","Bogey"],["#f87171","2+ over"]].map(([c, l]) =>
-                React.createElement("span", { key:l, style:{ background:c, padding:"2px 8px", borderRadius:10, color:"#374151", fontWeight:500 } }, l)
-              )
-            ),
-
-            totalStrokes > 0 && React.createElement("div", {
-              style:{ background:"#fff", borderRadius:10, padding:"10px 14px", marginBottom:12, display:"flex", justifyContent:"space-between", alignItems:"center", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }
-            },
-              React.createElement("span", { style:{ fontWeight:600, color:"#374151" } },
-                "Total: ", React.createElement("strong", { style:{ fontSize:20 } }, totalStrokes)
-              ),
-              React.createElement("span", { style:{ fontWeight:700, fontSize:18, color: diffColor(diff) } }, diffLabel(diff))
-            ),
-
-            React.createElement("button", {
-              onClick: saveRound, disabled: !allFilled,
-              style:{
-                width:"100%", padding:"12px 0", borderRadius:10, border:"none",
-                background: allFilled ? "#15803d" : "#e2e8f0",
-                color:      allFilled ? "#fff"    : "#94a3b8",
-                fontWeight:700, fontSize:15, cursor: allFilled ? "pointer" : "default",
-              }
-            }, savedMsg ? "Lagret!" : "Lagre runde")
-          ),
-
-          view === "Statistikk" && React.createElement("div", null,
-            !rounds.length
-              ? React.createElement("div", { style:{ textAlign:"center", color:"#64748b", marginTop:40 } }, "Ingen runder lagret enna.")
-              : React.createElement("div", null,
-
-                  React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:8, marginBottom:14 } },
-                    [
-                      ["Runder", overallStats.count,                                              "#2563eb"],
-                      ["Snitt",  Number(overallStats.avg) > 0 ? "+" + overallStats.avg : overallStats.avg, "#d97706"],
-                      ["Best",   diffLabel(overallStats.best),                                    "#16a34a"],
-                      ["HCP",    hcp !== null ? hcp : "-",                                        "#7c3aed"],
-                    ].map(([lbl, val, col]) =>
-                      React.createElement("div", { key:lbl, style:{ background:"#fff", borderRadius:10, padding:"10px 6px", textAlign:"center", boxShadow:"0 1px 3px rgba(0,0,0,0.06)" } },
-                        React.createElement("div", { style:{ fontSize:11, color:"#64748b", fontWeight:600 } }, lbl),
-                        React.createElement("div", { style:{ fontSize:17, fontWeight:800, color:col } }, val)
-                      )
-                    )
-                  ),
-
-                  hcp === null && React.createElement("div", { style:{ fontSize:12, color:"#94a3b8", marginBottom:12, textAlign:"center" } }, "Trenger minst 3 runder for handicap-beregning"),
-
-                  React.createElement(W, null,
-                    React.createElement("div", { style:{ fontWeight:700, color:"#374151", marginBottom:8 } }, "Totalt antall slag per runde"),
-                    React.createElement(ResponsiveContainer, { width:"100%", height:180 },
-                      React.createElement(LineChart, { data: totalChartData, margin:{ left:-10, right:8 } },
-                        React.createElement(CartesianGrid, { strokeDasharray:"3 3", stroke:"#f1f5f9" }),
-                        React.createElement(XAxis, { dataKey:"name", tick:{ fontSize:11 } }),
-                        React.createElement(YAxis, { tick:{ fontSize:11 }, domain:["auto","auto"] }),
-                        React.createElement(Tooltip),
-                        React.createElement(Line, { type:"monotone", dataKey:"Slag", stroke:"#15803d", strokeWidth:2, dot:{ r:4 } }),
-                        React.createElement(Line, { type:"monotone", dataKey:"Par",  stroke:"#94a3b8", strokeDasharray:"4 4", strokeWidth:1.5, dot:false })
-                      )
-                    )
-                  ),
-
-                  React.createElement(W, null,
-                    React.createElement("div", { style:{ fontWeight:700, color:"#374151", marginBottom:4 } }, "Verstinghull"),
-                    React.createElement("div", { style:{ fontSize:12, color:"#94a3b8", marginBottom:10 } }, "Topp 5 hull med hoyest snitt over par"),
-                    worstHoles.slice(0, 5).map(h =>
-                      React.createElement("div", { key: h.hole, style:{ display:"flex", alignItems:"center", gap:8, marginBottom:8 } },
-                        React.createElement("div", { style:{ width:44, fontWeight:700, fontSize:13, color:"#374151" } }, "Hull " + h.hole),
-                        React.createElement("div", { style:{ flex:1, background:"#f1f5f9", borderRadius:6, height:18, overflow:"hidden" } },
-                          React.createElement("div", { style:{ width: Math.min(100,(h.delta/3)*100) + "%", background: h.delta>1?"#ef4444":h.delta>0.5?"#f97316":"#fbbf24", height:"100%", borderRadius:6, minWidth:4 } })
-                        ),
-                        React.createElement("div", { style:{ width:60, textAlign:"right", fontSize:13, color: h.delta > 0 ? "#dc2626" : "#16a34a", fontWeight:700 } },
-                          (h.delta > 0 ? "+" : "") + h.delta
-                        )
-                      )
-                    )
-                  ),
-
-                  React.createElement(W, null,
-                    React.createElement("div", { style:{ fontWeight:700, color:"#374151", marginBottom:10 } }, "Graf per hull"),
-                    React.createElement("div", { style:{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 } },
-                      Array.from({ length:18 }, (_, i) =>
-                        React.createElement("button", {
-                          key: i, onClick: () => setStatsHole(statsHole === i ? null : i),
-                          style:{
-                            padding:"4px 10px", borderRadius:20, border:"none", cursor:"pointer", fontSize:12, fontWeight:600,
-                            background: statsHole === i ? "#15803d" : "#e2e8f0",
-                            color:      statsHole === i ? "#fff"    : "#374151",
-                          }
-                        }, "H" + (i + 1))
-                      )
-                    ),
-                    statsHole !== null && holeChartData.length > 0 && React.createElement("div", null,
-                      holeStats && React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:10 } },
-                        [["Snitt", holeStats.avg],["Best", holeStats.best],["Par", holeStats.par]].map(([l, v]) =>
-                          React.createElement("div", { key:l, style:{ textAlign:"center", background:"#f8fafc", borderRadius:8, padding:"6px 4px" } },
-                            React.createElement("div", { style:{ fontSize:11, color:"#64748b" } }, l),
-                            React.createElement("div", { style:{ fontWeight:700, fontSize:16 } }, v)
-                          )
-                        )
-                      ),
-                      React.createElement(ResponsiveContainer, { width:"100%", height:160 },
-                        React.createElement(LineChart, { data: holeChartData, margin:{ left:-10, right:8 } },
-                          React.createElement(CartesianGrid, { strokeDasharray:"3 3", stroke:"#f1f5f9" }),
-                          React.createElement(XAxis, { dataKey:"name", tick:{ fontSize:11 } }),
-                          React.createElement(YAxis, { tick:{ fontSize:11 }, domain:["auto","auto"] }),
-                          React.createElement(Tooltip),
-                          holeStats && React.createElement(ReferenceLine, { y: holeStats.par, stroke:"#94a3b8", strokeDasharray:"4 4", label:{ value:"Par", position:"insideTopRight", fontSize:10 } }),
-                          React.createElement(Line, { type:"monotone", dataKey:"Slag", stroke:"#2563eb", strokeWidth:2, dot:{ r:4 } })
-                        )
-                      )
-                    ),
-                    statsHole !== null && !holeChartData.length && React.createElement("div", { style:{ color:"#94a3b8", fontSize:13, textAlign:"center", padding:12 } }, "Ingen data enna."),
-                    statsHole === null && React.createElement("div", { style:{ color:"#94a3b8", fontSize:13, textAlign:"center", padding:8 } }, "Trykk pa et hull for a se grafen.")
-                  ),
-
-                  React.createElement(W, { mb: 0 },
-                    React.createElement("div", { style:{ fontWeight:700, color:"#374151", marginBottom:8 } }, "Rundehistorikk"),
-                    [...rounds].reverse().map(r =>
-                      React.createElement("div", { key: r.id, style:{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 0", borderBottom:"1px solid #f1f5f9" } },
-                        React.createElement("div", null,
-                          React.createElement("span", { style:{ fontWeight:600, fontSize:13 } }, fmtDate(r.date)),
-                          React.createElement("span", { style:{ fontSize:11, color:"#94a3b8", marginLeft:6 } }, r.courseName)
-                        ),
-                        React.createElement("div", { style:{ display:"flex", gap:10, alignItems:"center" } },
-                          React.createElement("span", { style:{ fontWeight:700, fontSize:15 } }, r.total),
-                          React.createElement("span", { style:{ fontWeight:700, fontSize:13, color: diffColor(r.diff) } }, diffLabel(r.diff)),
-                          React.createElement("button", { onClick: () => deleteRound(r.id), style:{ background:"none", border:"none", cursor:"pointer", color:"#cbd5e1", fontSize:18, padding:0, lineHeight:1 } }, "x")
-                        )
-                      )
-                    )
-                  )
-                )
-          ),
-
-          view === "Achievements" && React.createElement("div", null,
-            React.createElement("div", { style:{ fontSize:13, color:"#64748b", marginBottom:14, textAlign:"center" } },
-              unlockedAch.length + " av " + ACHIEVEMENTS.length + " achievements last opp"
-            ),
-            React.createElement("div", { style:{ background:"#fff", borderRadius:12, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" } },
-              ACHIEVEMENTS.map((a, i) => {
-                const ok = a.check(rounds);
-                return React.createElement("div", {
-                  key: a.id,
-                  style:{
-                    display:"flex", alignItems:"center", gap:14, padding:"14px 16px",
-                    borderBottom: i < ACHIEVEMENTS.length - 1 ? "1px solid #f1f5f9" : "none",
-                    opacity: ok ? 1 : 0.4,
-                    background: ok ? "#fff" : "#f8fafc",
-                  }
-                },
-                  React.createElement("div", { style:{ width:36, textAlign:"center", fontSize:13, fontWeight:700, color:"#15803d" } }, ok ? ICON_MAP[a.icon] : "?"),
-                  React.createElement("div", null,
-                    React.createElement("div", { style:{ fontWeight:700, fontSize:14, color: ok ? "#1e293b" : "#94a3b8" } }, a.title),
-                    React.createElement("div", { style:{ fontSize:12, color:"#94a3b8", marginTop:2 } }, a.desc)
-                  ),
-                  ok && React.createElement("div", { style:{ marginLeft:"auto", color:"#16a34a", fontSize:18 } }, "ok")
-                );
-              })
-            )
-          )
-        )
-      );
+      main=`
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+          ${statBox("Runder",os.count,"#2563eb")}
+          ${statBox("Snitt",Number(os.avg)>0?"+"+os.avg:os.avg,"#d97706")}
+          ${statBox("Best",diffLabel(os.best),"#16a34a")}
+          ${statBox("HCP",hcp!==null?hcp:"-","#7c3aed")}
+        </div>
+        ${hcp===null?`<p style="font-size:12px;color:#94a3b8;margin-bottom:12px;text-align:center">Trenger minst 3 runder for handicap-beregning</p>`:""}
+        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Totalt antall slag per runde</div>${lineChart(rounds.map(r=>({date:r.date,Slag:r.total,Par:r.par})),"Slag","Par","#15803d",180)}`)}
+        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:4px">Verstinghull</div>
+          <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">Topp 5 hull med hoyest snitt over par</div>
+          ${worst.map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <div style="width:44px;font-weight:700;font-size:13px">Hull ${h.hole}</div>
+            <div style="flex:1;background:#f1f5f9;border-radius:6px;height:18px;overflow:hidden">
+              <div style="width:${Math.max(4,Math.min(100,(h.delta/3)*100))}%;background:${h.delta>1?"#ef4444":h.delta>0.5?"#f97316":"#fbbf24"};height:100%;border-radius:6px"></div>
+            </div>
+            <div style="width:52px;text-align:right;font-size:13px;font-weight:700;color:${h.delta>0?"#dc2626":"#16a34a"}">${h.delta>0?"+":""}${h.delta}</div>
+          </div>`).join("")}`)}
+        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:10px">Graf per hull</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${holeBtns}</div>
+          ${holeSection}`)}
+        ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Rundehistorikk</div>${histRows}`,0)}`;
     }
+  }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
-  </script>
+  if(view==="achievements"){
+    const rows=ACHIEVEMENTS.map((a,i)=>{
+      const ok=a.check(rounds);
+      return `<div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:${i<ACHIEVEMENTS.length-1?"1px solid #f1f5f9":"none"};opacity:${ok?1:0.4};background:${ok?"#fff":"#f8fafc"}">
+        <div style="width:36px;height:36px;border-radius:50%;background:${ok?"#dcfce7":"#e2e8f0"};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:${ok?"#15803d":"#94a3b8"};flex-shrink:0">${a.badge}</div>
+        <div>
+          <div style="font-weight:700;font-size:14px;color:${ok?"#1e293b":"#94a3b8"}">${a.title}</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px">${a.desc}</div>
+        </div>
+        ${ok?`<div style="margin-left:auto;color:#16a34a;font-size:20px;font-weight:700">&#10003;</div>`:""}
+      </div>`;
+    }).join("");
+    main=`
+      <p style="font-size:13px;color:#64748b;margin-bottom:14px;text-align:center">${unlockedAch.length} av ${ACHIEVEMENTS.length} achievements last opp</p>
+      <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06)">${rows}</div>`;
+  }
+
+  document.getElementById("app").innerHTML=`
+    <div style="max-width:520px;margin:0 auto;padding:12px 16px;background:#f8fafc;min-height:100vh">
+      <div style="text-align:center;margin-bottom:14px">
+        <div style="font-size:22px;font-weight:700;color:#15803d">Sola GK Scoretracker</div>
+        ${hcp!==null?`<div style="margin-top:4px;font-size:13px;color:#64748b">Handicap-indeks: <strong style="color:#15803d;font-size:16px">${hcp}</strong></div>`:""}
+      </div>
+      ${notices.length?`<div style="background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:12px;margin-bottom:14px">${notices.map(n=>`<div style="font-weight:600;color:#854d0e;font-size:14px;margin-bottom:4px">${n}</div>`).join("")}</div>`:""}
+      <div style="display:flex;gap:6px;margin-bottom:14px">
+        ${btn("Ny runde",view==="runde","setView('runde')")}
+        ${btn("Statistikk",view==="statistikk","setView('statistikk')")}
+        ${btn("Achievements",view==="achievements","setView('achievements')")}
+      </div>
+      ${main}
+    </div>`;
+}
+
+// ── Actions ─────────────────────────────────────────────────────
+function setView(v)         { setState({view:v}); }
+function setCourse(k)       { setState({courseKey:k,scores:Array(18).fill("")}); }
+function setStatsHole(i)    { setState(s=>({statsHole:s.statsHole===i?null:i})); }
+function setScore(i,val){
+  const n=parseInt(val);
+  if(val===""|| (n>=1&&n<=15)){
+    const scores=[...state.scores]; scores[i]=val===""?"":String(n); setState({scores});
+  }
+}
+function deleteRound(id){
+  if(confirm("Slett denne runden?")){
+    const rounds=state.rounds.filter(r=>r.id!==id); saveRounds(rounds); setState({rounds});
+  }
+}
+function saveRound(){
+  const {courseKey,scores,rounds}=state;
+  const course=COURSES[courseKey];
+  const total=scores.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const diff=total-course.par;
+  const round={id:Date.now(),date:new Date().toISOString(),course:courseKey,courseName:course.name,scores:scores.map(v=>parseInt(v)||0),total,par:course.par,diff};
+  const updated=[...rounds,round];
+  const msgs=[];
+  const prev=rounds.filter(r=>r.course===courseKey);
+  if(!prev.length) msgs.push("Forste runde pa "+course.name+"!");
+  else if(total<Math.min(...prev.map(r=>r.total))) msgs.push("Ny personlig rekord pa "+course.name+": "+total+" slag!");
+  const hRec=[];
+  scores.forEach((s,i)=>{ const v=parseInt(s),pb=rounds.filter(r=>r.course===courseKey).map(r=>r.scores[i]).filter(x=>x>0); if(pb.length&&v<Math.min(...pb))hRec.push("hull "+(i+1)); });
+  if(hRec.length) msgs.push("Ny rekord pa "+hRec.join(", ")+"!");
+  const prevIds=ACHIEVEMENTS.filter(a=>a.check(rounds)).map(a=>a.id);
+  ACHIEVEMENTS.filter(a=>!prevIds.includes(a.id)&&a.check(updated)).forEach(a=>msgs.push("Achievement: "+a.title+"!"));
+  saveRounds(updated);
+  setState({rounds:updated,scores:Array(18).fill(""),notices:msgs});
+  if(msgs.length) setTimeout(()=>setState({notices:[]}),5000);
+}
+
+render();
+</script>
 </body>
 </html>
