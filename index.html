@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sola GK Scoretracker</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.5.0/Recharts.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.21.4/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f8fafc; font-family: system-ui, sans-serif; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type=number] { -moz-appearance: textfield; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useMemo, useEffect } = React;
+    const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } = Recharts;
+
+    const COURSES = {
+      forus: { name: "Forus (Par 72)", totalPar: 72, holes: [4,4,3,4,4,4,4,3,4,5,4,4,3,4,5,4,3,4] },
+      solastranden: { name: "Solastranden (Par 69)", totalPar: 69, holes: [4,4,3,4,4,3,4,4,4,3,4,3,4,4,3,5,3,4] },
+    };
+
+    const ACHIEVEMENTS = [
+      { id:"first_round",   icon:"🏌️", title:"Første runde",    desc:"Registrerte sin første runde",               check: r => r.length >= 1 },
+      { id:"five_rounds",   icon:"⭐",  title:"5 runder",        desc:"Fullførte 5 runder",                         check: r => r.length >= 5 },
+      { id:"ten_rounds",    icon:"🔟",  title:"10 runder",       desc:"Fullførte 10 runder",                        check: r => r.length >= 10 },
+      { id:"first_birdie",  icon:"🐦",  title:"Første birdie",   desc:"Slo sin første birdie",                      check: r => r.some(rd => rd.scores.some((s,i) => s === COURSES[rd.course].holes[i]-1)) },
+      { id:"first_eagle",   icon:"🦅",  title:"Ørn!",            desc:"Slo sin første eagle",                       check: r => r.some(rd => rd.scores.some((s,i) => s <= COURSES[rd.course].holes[i]-2)) },
+      { id:"par_round",     icon:"🎯",  title:"Par-runde",       desc:"Fullførte en runde på par eller bedre",      check: r => r.some(rd => rd.diff <= 0) },
+      { id:"under_90",      icon:"9️⃣",  title:"Under 90",        desc:"Slo under 90 slag på Forus",                 check: r => r.some(rd => rd.course==="forus" && rd.total < 90) },
+      { id:"under_80",      icon:"🔥",  title:"Under 80",        desc:"Slo under 80 slag på Forus",                 check: r => r.some(rd => rd.course==="forus" && rd.total < 80) },
+      { id:"improving",     icon:"📈",  title:"På vei opp",      desc:"3 runder på rad med lavere score enn forrige", check: r => {
+        if (r.length < 3) return false;
+        const l = r.slice(-3);
+        return l[1].total < l[0].total && l[2].total < l[1].total;
+      }},
+    ];
+
+    function fmtDate(d) {
+      return new Date(d).toLocaleDateString("nb-NO", { day:"2-digit", month:"short", year:"2-digit" });
+    }
+
+    function calcHCP(rounds) {
+      if (rounds.length < 3) return null;
+      const use = rounds.slice(-20);
+      const diffs = use.map(r => {
+        const cr = r.course==="forus" ? 72.9 : 68.2;
+        const sl = r.course==="forus" ? 144  : 126;
+        return ((r.total - cr) * 113) / sl;
+      });
+      diffs.sort((a,b) => a-b);
+      const n = use.length;
+      const take = n<=6?1:n<=8?2:n<=11?3:n<=14?4:n<=16?5:n<=18?6:8;
+      const avg = diffs.slice(0,take).reduce((a,b)=>a+b,0)/take;
+      return (avg*0.96).toFixed(1);
+    }
+
+    const diffLabel = d => d===0?"E":d>0?`+${d}`:`${d}`;
+    const diffColor = d => d<0?"#16a34a":d===0?"#2563eb":"#dc2626";
+
+    function App() {
+      const [view, setView]         = useState("Ny runde");
+      const [courseKey, setCourseKey] = useState("forus");
+      const [scores, setScores]     = useState(Array(18).fill(""));
+      const [rounds, setRounds]     = useState(() => {
+        try { const s = localStorage.getItem("sola_gk_rounds"); return s ? JSON.parse(s) : []; }
+        catch { return []; }
+      });
+      const [savedMsg, setSavedMsg] = useState(false);
+      const [notices, setNotices]   = useState([]);
+      const [statsHole, setStatsHole] = useState(null);
+
+      useEffect(() => {
+        try { localStorage.setItem("sola_gk_rounds", JSON.stringify(rounds)); } catch {}
+      }, [rounds]);
+
+      const course = COURSES[courseKey];
+      const totalStrokes = scores.reduce((s,v) => s+(parseInt(v)||0), 0);
+      const diff = totalStrokes - course.totalPar;
+      const allFilled = scores.every(v => parseInt(v) > 0);
+
+      function setScore(i, val) {
+        const n = parseInt(val);
+        if (val===""|| (n>=1&&n<=15)) {
+          const s=[...scores]; s[i]=val===""?"":String(n); setScores(s);
+        }
+      }
+
+      function saveRound() {
+        const round = {
+          id: Date.now(), date: new Date().toISOString(),
+          course: courseKey, courseName: course.name,
+          scores: scores.map(v=>parseInt(v)||0),
+          total: totalStrokes, par: course.totalPar, diff,
+        };
+        const updated = [...rounds, round];
+        const msgs = [];
+
+        // Personlige rekorder
+        const prev = rounds.filter(r=>r.course===courseKey);
+        if (!prev.length) msgs.push(`🏆 Første runde på ${course.name}!`);
+        else if (totalStrokes < Math.min(...prev.map(r=>r.total)))
+          msgs.push(`🏆 Ny personlig rekord på ${course.name}: ${totalStrokes} slag!`);
+
+        const hRec = [];
+        scores.forEach((s,i)=>{
+          const val=parseInt(s);
+          const pb=rounds.filter(r=>r.course===courseKey).map(r=>r.scores[i]).filter(v=>v>0);
+          if (pb.length && val < Math.min(...pb)) hRec.push(`Hull ${i+1}`);
+        });
+        if (hRec.length) msgs.push(`⛳ Ny rekord på ${hRec.join(", ")}!`);
+
+        // Achievements
+        const prevIds = ACHIEVEMENTS.filter(a=>a.check(rounds)).map(a=>a.id);
+        ACHIEVEMENTS.filter(a=>!prevIds.includes(a.id)&&a.check(updated))
+          .forEach(a => msgs.push(`${a.icon} Achievement låst opp: ${a.title}!`));
+
+        setRounds(updated);
+        setScores(Array(18).fill(""));
+        if (msgs.length) { setNotices(msgs); setTimeout(()=>setNotices([]),5000); }
+        setSavedMsg(true);
+        setTimeout(()=>setSavedMsg(false),2500);
+      }
+
+      function deleteRound(id) {
+        if (confirm("Slett denne runden?")) setRounds(prev=>prev.filter(r=>r.id!==id));
+      }
+
+      const hcp = useMemo(()=>calcHCP(rounds),[rounds]);
+      const unlockedAch = useMemo(()=>ACHIEVEMENTS.filter(a=>a.check(rounds)),[rounds]);
+
+      const worstHoles = useMemo(()=>{
+        if (!rounds.length) return [];
+        return Array.from({length:18},(_,i)=>{
+          const vals=rounds.map(r=>({score:r.scores[i],par:COURSES[r.course].holes[i]})).filter(v=>v.score>0);
+          if (!vals.length) return {hole:i+1,delta:0};
+          const delta=vals.reduce((s,v)=>s+(v.score-v.par),0)/vals.length;
+          return {hole:i+1,delta:parseFloat(delta.toFixed(2))};
+        }).sort((a,b)=>b.delta-a.delta);
+      },[rounds]);
+
+      const totalChartData = rounds.map(r=>({name:fmtDate(r.date),Slag:r.total,Par:r.par}));
+      const holeChartData  = statsHole!==null
+        ? rounds.filter(r=>r.scores[statsHole]>0).map(r=>({name:fmtDate(r.date),Slag:r.scores[statsHole],Par:COURSES[r.course].holes[statsHole]}))
+        : [];
+      const holeStats = useMemo(()=>{
+        if (statsHole===null||!rounds.length) return null;
+        const vals=rounds.map(r=>r.scores[statsHole]).filter(v=>v>0);
+        if (!vals.length) return null;
+        return {avg:(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1),best:Math.min(...vals),par:COURSES[rounds[0].course].holes[statsHole]};
+      },[statsHole,rounds]);
+
+      const overallStats = useMemo(()=>{
+        if (!rounds.length) return null;
+        const d=rounds.map(r=>r.diff);
+        return {avg:(d.reduce((a,b)=>a+b,0)/d.length).toFixed(1),best:Math.min(...d),worst:Math.max(...d),count:rounds.length};
+      },[rounds]);
+
+      const card = (children, mb=14) => (
+        <div style={{background:"#fff",borderRadius:12,padding:12,marginBottom:mb,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+          {children}
+        </div>
+      );
+
+      return (
+        <div style={{maxWidth:520,margin:"0 auto",padding:"12px 16px",background:"#f8fafc",minHeight:"100vh"}}>
+
+          {/* Header */}
+          <div style={{textAlign:"center",marginBottom:14}}>
+            <div style={{fontSize:22,fontWeight:700,color:"#15803d"}}>⛳ Sola GK Scoretracker</div>
+            {hcp!==null && (
+              <div style={{marginTop:4,fontSize:13,color:"#64748b"}}>
+                Handicap-indeks: <strong style={{color:"#15803d",fontSize:16}}>{hcp}</strong>
+              </div>
+            )}
+          </div>
+
+          {/* Notifikasjoner */}
+          {notices.length>0 && (
+            <div style={{background:"#fefce8",border:"1px solid #fde047",borderRadius:12,padding:12,marginBottom:14}}>
+              {notices.map((n,i)=><div key={i} style={{fontWeight:600,color:"#854d0e",fontSize:14,marginBottom:i<notices.length-1?4:0}}>{n}</div>)}
+            </div>
+          )}
+
+          {/* Tabs */}
+          <div style={{display:"flex",gap:6,marginBottom:14}}>
+            {["Ny runde","Statistikk","Achievements"].map(v=>(
+              <button key={v} onClick={()=>setView(v)} style={{
+                flex:1,padding:"8px 0",borderRadius:8,border:"none",cursor:"pointer",
+                fontWeight:600,fontSize:13,
+                background:view===v?"#15803d":"#e2e8f0",
+                color:view===v?"#fff":"#374151",
+              }}>{v}</button>
+            ))}
+          </div>
+
+          {/* ── NY RUNDE ── */}
+          {view==="Ny runde" && (
+            <div>
+              {/* Banevalg */}
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                {Object.entries(COURSES).map(([key,c])=>(
+                  <button key={key} onClick={()=>{setCourseKey(key);setScores(Array(18).fill(""));}} style={{
+                    flex:1,padding:"7px 0",borderRadius:8,border:"2px solid",
+                    borderColor:courseKey===key?"#15803d":"#cbd5e1",
+                    background:courseKey===key?"#dcfce7":"#fff",
+                    fontWeight:600,fontSize:13,cursor:"pointer",color:"#1e293b",
+                  }}>{c.name}</button>
+                ))}
+              </div>
+
+              {/* Hull-grid */}
+              {card(
+                <div>
+                  {[0,9].map(start=>(
+                    <div key={start}>
+                      {start===9&&<div style={{height:1,background:"#e2e8f0",margin:"8px 0"}}/>}
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(9,1fr)",gap:4}}>
+                        {course.holes.slice(start,start+9).map((par,j)=>{
+                          const i=start+j, val=parseInt(scores[i]), delta=val-par;
+                          let bg="#f1f5f9";
+                          if(val){if(delta<=-2)bg="#fef08a";else if(delta===-1)bg="#bbf7d0";else if(delta===0)bg="#e0f2fe";else if(delta===1)bg="#fecaca";else bg="#f87171";}
+                          return (
+                            <div key={i} style={{textAlign:"center"}}>
+                              <div style={{fontSize:9,color:"#64748b",fontWeight:600}}>H{i+1}</div>
+                              <div style={{fontSize:9,color:"#94a3b8"}}>p{par}</div>
+                              <input type="number" min="1" max="15" value={scores[i]}
+                                onChange={e=>setScore(i,e.target.value)}
+                                style={{width:"100%",textAlign:"center",padding:"4px 0",borderRadius:6,border:"1px solid #e2e8f0",background:bg,fontWeight:700,fontSize:15}}/>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Fargeforklaring */}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12,fontSize:11}}>
+                {[["#fef08a","Eagle–"],["#bbf7d0","Birdie"],["#e0f2fe","Par"],["#fecaca","Bogey"],["#f87171","2+ over"]].map(([c,l])=>(
+                  <span key={l} style={{background:c,padding:"2px 8px",borderRadius:10,color:"#374151",fontWeight:500}}>{l}</span>
+                ))}
+              </div>
+
+              {/* Total */}
+              {totalStrokes>0 && (
+                <div style={{background:"#fff",borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+                  <span style={{fontWeight:600,color:"#374151"}}>Total: <strong style={{fontSize:20}}>{totalStrokes}</strong></span>
+                  <span style={{fontWeight:700,fontSize:18,color:diffColor(diff)}}>{diffLabel(diff)}</span>
+                </div>
+              )}
+
+              <button onClick={saveRound} disabled={!allFilled} style={{
+                width:"100%",padding:"12px 0",borderRadius:10,border:"none",
+                background:allFilled?"#15803d":"#e2e8f0",
+                color:allFilled?"#fff":"#94a3b8",
+                fontWeight:700,fontSize:15,cursor:allFilled?"pointer":"default",
+              }}>{savedMsg?"✓ Lagret!":"Lagre runde"}</button>
+            </div>
+          )}
+
+          {/* ── STATISTIKK ── */}
+          {view==="Statistikk" && (
+            <div>
+              {!rounds.length ? (
+                <div style={{textAlign:"center",color:"#64748b",marginTop:40}}>Ingen runder lagret ennå.</div>
+              ) : (
+                <>
+                  {/* Sammendrag */}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:14}}>
+                    {[
+                      ["Runder",overallStats.count,"#2563eb"],
+                      ["Snitt",Number(overallStats.avg)>0?`+${overallStats.avg}`:overallStats.avg,"#d97706"],
+                      ["Best",diffLabel(overallStats.best),"#16a34a"],
+                      ["HCP",hcp??"–","#7c3aed"],
+                    ].map(([lbl,val,col])=>(
+                      <div key={lbl} style={{background:"#fff",borderRadius:10,padding:"10px 6px",textAlign:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+                        <div style={{fontSize:11,color:"#64748b",fontWeight:600}}>{lbl}</div>
+                        <div style={{fontSize:17,fontWeight:800,color:col}}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {hcp===null&&<div style={{fontSize:12,color:"#94a3b8",marginBottom:12,textAlign:"center"}}>Trenger minst 3 runder for handicap-beregning</div>}
+
+                  {/* Total slag graf */}
+                  {card(
+                    <>
+                      <div style={{fontWeight:700,color:"#374151",marginBottom:8}}>Totalt antall slag per runde</div>
+                      <ResponsiveContainer width="100%" height={180}>
+                        <LineChart data={totalChartData} margin={{left:-10,right:8}}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                          <XAxis dataKey="name" tick={{fontSize:11}}/>
+                          <YAxis tick={{fontSize:11}} domain={["auto","auto"]}/>
+                          <Tooltip/>
+                          <Line type="monotone" dataKey="Slag" stroke="#15803d" strokeWidth={2} dot={{r:4}}/>
+                          <Line type="monotone" dataKey="Par" stroke="#94a3b8" strokeDasharray="4 4" strokeWidth={1.5} dot={false}/>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </>
+                  )}
+
+                  {/* Verstinghull */}
+                  {card(
+                    <>
+                      <div style={{fontWeight:700,color:"#374151",marginBottom:4}}>🔥 Verstinghull</div>
+                      <div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>Topp 5 hull med høyest snitt over par</div>
+                      {worstHoles.slice(0,5).map(h=>(
+                        <div key={h.hole} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                          <div style={{width:44,fontWeight:700,fontSize:13,color:"#374151"}}>Hull {h.hole}</div>
+                          <div style={{flex:1,background:"#f1f5f9",borderRadius:6,height:18,overflow:"hidden"}}>
+                            <div style={{width:`${Math.min(100,(h.delta/3)*100)}%`,background:h.delta>1?"#ef4444":h.delta>0.5?"#f97316":"#fbbf24",height:"100%",borderRadius:6,minWidth:4}}/>
+                          </div>
+                          <div style={{width:60,textAlign:"right",fontSize:13,color:h.delta>0?"#dc2626":"#16a34a",fontWeight:700}}>
+                            {h.delta>0?`+${h.delta}`:h.delta}
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* Graf per hull */}
+                  {card(
+                    <>
+                      <div style={{fontWeight:700,color:"#374151",marginBottom:10}}>Graf per hull</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+                        {Array.from({length:18},(_,i)=>(
+                          <button key={i} onClick={()=>setStatsHole(statsHole===i?null:i)} style={{
+                            padding:"4px 10px",borderRadius:20,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,
+                            background:statsHole===i?"#15803d":"#e2e8f0",color:statsHole===i?"#fff":"#374151",
+                          }}>H{i+1}</button>
+                        ))}
+                      </div>
+                      {statsHole!==null&&holeChartData.length>0&&(
+                        <>
+                          {holeStats&&(
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10}}>
+                              {[["Snitt",holeStats.avg],["Best",holeStats.best],["Par",holeStats.par]].map(([l,v])=>(
+                                <div key={l} style={{textAlign:"center",background:"#f8fafc",borderRadius:8,padding:"6px 4px"}}>
+                                  <div style={{fontSize:11,color:"#64748b"}}>{l}</div>
+                                  <div style={{fontWeight:700,fontSize:16}}>{v}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <ResponsiveContainer width="100%" height={160}>
+                            <LineChart data={holeChartData} margin={{left:-10,right:8}}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                              <XAxis dataKey="name" tick={{fontSize:11}}/>
+                              <YAxis tick={{fontSize:11}} domain={["auto","auto"]}/>
+                              <Tooltip/>
+                              <ReferenceLine y={holeStats?.par} stroke="#94a3b8" strokeDasharray="4 4" label={{value:"Par",position:"insideTopRight",fontSize:10}}/>
+                              <Line type="monotone" dataKey="Slag" stroke="#2563eb" strokeWidth={2} dot={{r:4}}/>
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </>
+                      )}
+                      {statsHole!==null&&!holeChartData.length&&<div style={{color:"#94a3b8",fontSize:13,textAlign:"center",padding:12}}>Ingen data ennå.</div>}
+                      {statsHole===null&&<div style={{color:"#94a3b8",fontSize:13,textAlign:"center",padding:8}}>Trykk på et hull for å se grafen.</div>}
+                    </>
+                  )}
+
+                  {/* Historikk */}
+                  {card(
+                    <>
+                      <div style={{fontWeight:700,color:"#374151",marginBottom:8}}>Rundehistorikk</div>
+                      {[...rounds].reverse().map(r=>(
+                        <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #f1f5f9"}}>
+                          <div>
+                            <span style={{fontWeight:600,fontSize:13}}>{fmtDate(r.date)}</span>
+                            <span style={{fontSize:11,color:"#94a3b8",marginLeft:6}}>{r.courseName}</span>
+                          </div>
+                          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                            <span style={{fontWeight:700,fontSize:15}}>{r.total}</span>
+                            <span style={{fontWeight:700,fontSize:13,color:diffColor(r.diff)}}>{diffLabel(r.diff)}</span>
+                            <button onClick={()=>deleteRound(r.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#cbd5e1",fontSize:18,padding:0,lineHeight:1}}>×</button>
+                          </div>
+                        </div>
+                      ))}
+                    </>,
+                    0
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── ACHIEVEMENTS ── */}
+          {view==="Achievements" && (
+            <div>
+              <div style={{fontSize:13,color:"#64748b",marginBottom:14,textAlign:"center"}}>
+                {unlockedAch.length} av {ACHIEVEMENTS.length} achievements låst opp
+              </div>
+              <div style={{background:"#fff",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+                {ACHIEVEMENTS.map((a,i)=>{
+                  const ok=a.check(rounds);
+                  return (
+                    <div key={a.id} style={{
+                      display:"flex",alignItems:"center",gap:14,padding:"14px 16px",
+                      borderBottom:i<ACHIEVEMENTS.length-1?"1px solid #f1f5f9":"none",
+                      opacity:ok?1:0.4,background:ok?"#fff":"#f8fafc",
+                    }}>
+                      <div style={{fontSize:28,minWidth:36,textAlign:"center"}}>{ok?a.icon:"🔒"}</div>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:14,color:ok?"#1e293b":"#94a3b8"}}>{a.title}</div>
+                        <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{a.desc}</div>
+                      </div>
+                      {ok&&<div style={{marginLeft:"auto",color:"#16a34a",fontSize:18}}>✓</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+</body>
+</html>
