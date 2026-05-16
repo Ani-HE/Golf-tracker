@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+
+<html lang="nb">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sola GK Scoretracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #f8fafc; font-family: system-ui, sans-serif; color: #1e293b; }
+    button { font-family: inherit; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    input[type=number] { -moz-appearance: textfield; font-family: inherit; }
+    input[type=email], input[type=password], input[type=text] { font-family: inherit; }
+    .tab-btn { flex:1; padding:8px 0; border-radius:8px; border:none; cursor:pointer; font-weight:600; font-size:13px; }
+    .card { background:#fff; border-radius:12px; padding:12px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+  </style>
+</head>
+<body>
+<div id="app"><div style="display:flex;align-items:center;justify-content:center;height:100vh;font-size:15px;color:#64748b">Laster...</div></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, updateDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAFkIVQCK2nWQM1ZNPaZN-_-x6Bax6Eosg",
+  authDomain: "golf-tracker-c9189.firebaseapp.com",
+  projectId: "golf-tracker-c9189",
+  storageBucket: "golf-tracker-c9189.firebasestorage.app",
+  messagingSenderId: "901675126066",
+  appId: "1:901675126066:web:ce83270ef06c815967db2b"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+
+const COURSES = {
+  forus: {
+    name: "Forus (Par 72)", par: 72, cr: 72.9, slope: 144,
+    holes: [4,4,4,3,5,4,3,4,5,4,3,5,4,4,4,4,3,5],
+    hcp:   [6,8,4,16,14,2,18,10,12,11,15,9,3,17,7,1,13,5],
+    guide: [
+      "Par 4, Hcp 6. Utslag høyre for fairwaybunker gir best innspillsvinkel. Hvis flagget er nær greenbunkere, legg deg kort midt på greenen for å unngå nedoverputt.",
+      "Par 4, Hcp 8. Beste utslag over høyre kant av første fairwaybunker - gir innspill mellom de to greenbunkerne. Greenen har to høydenivåer, sjekk hullplassering.",
+      "Par 4, Hcp 4. Beste utslag er en lang draw som setter fairwaybunker ut av spill. Greenen er flat med bunker på venstre side og vannhinder foran på høyre side.",
+      "Par 3, Hcp 16. Sjekk vindretning og hullplassering - avgjørende for køllevalg. Greenen er dyp og heller mot venstre. Unngå spesielt greenbunker på venstre side.",
+      "Par 5, Hcp 14. Beste utslag langt og rett frem midt i fairway. Sikt på fairwaybunker til venstre for å sette greenbunkere høyre ut av spill. Vurder en kølle mindre hvis flagget er bak.",
+      "Par 4, Hcp 2. Dogleg - beste utslag nær trerekke til venstre. Ligger du kort bør du spille hullet som par 5. Greenen er dyp og heller mot spilleretningen, sikt etter oppoverputt.",
+      "Par 3, Hcp 18. Sjekk vindretning ved flagget før køllevalg - stor forskjell mellom tee og green. Slå kort hvis hullet er bak til høyre.",
+      "Par 4, Hcp 10. Sjekk sidevannhinder på venstre side. Utslag midt i fairway anbefales. Greenen er vanskelig og heller mot spilleretningen og mot venstre.",
+      "Par 5, Hcp 12. Beste utslag til høyre for stor bunker til venstre. Sikt på fairwaybunker ca 70m fra greenen. Greenen er flat med bunkere på venstre side og bak.",
+      "Par 4, Hcp 11. Beste utslag på fairwayens høyre side, men vær oppmerksom på OB til høyre. Greenen er tverrstilt - ikke sikt på flagget hvis det står bak bunker på venstre del.",
+      "Par 3, Hcp 15. Vanskeligheten er lengden og åpent terreng som gir mye vind. Greenen er relativt flat men heller litt mot spilleretningen.",
+      "Par 5, Hcp 9. Slå over venstre del av vannhinderet. Fairwayen heller ned mot midten fra begge sider - langt slag gir best grunnlag. Greenen er svært dyp og flat med bunkere.",
+      "Par 4, Hcp 3. Dogleg - beste utslag en svak draw til midten av fairway. God plass på venstre side. Fullt mulig å rulle ballen til greenen på høyre side av greenbunker. Sjekk OB bak til høyre.",
+      "Par 4, Hcp 17. Utfordringen er å komme opp bakken for å ligge flatt for innspill. Greenen er dyp og smal med bratt skråning og bunker på venstre side.",
+      "Par 4, Hcp 7. Unngå trær og rough på begge sider. Greenen er svært dyp i åpent terreng med bunkere på begge sider. Sjekk hullplassering nøye for køljevalg.",
+      "Par 4, Hcp 1 - banens vanskeligste hull. Dogleg - sikt så nær det ytterste treet som du tør. Greenen er opphøyd og heller mot spilleretningen og høyre. For langt innspill gir vanskelig chip.",
+      "Par 3, Hcp 13. Greenen er dyp med stor ondulering på venstre fremre del. Ligger relativt åpen og kan være utsatt for vind. Skråning på høyre side eller kort foran green gir trøbbel.",
+      "Par 5, Hcp 5. Sikt mot midten av bunker bak fairway. Slag 2 mot høyre side av fairway gir best vinkel for innspill. Greenen er relativt flat med svak hellning mot høyre.",
+    ]
+  },
+  solastranden: {
+    name: "Solastranden (Par 68)", par: 68, cr: 68.2, slope: 126,
+    holes: [4,4,3,4,4,4,3,4,5,4,3,5,3,3,4,4,3,4],
+    hcp:   [3,1,13,17,9,7,15,5,11,10,18,6,16,14,4,2,12,8],
+    guide: [
+      "Par 4, Hcp 3. Utslag mellom fairwaybunkerne. Beste posisjon for slag 2 er fra venstre del av fairway. Straffeområde og bunker på høyre side av green. Kan lønne seg å trille ballen opp. Unngå høyre av green.",
+      "Par 4, Hcp 1 - banens vanskeligste hull. Beste landingsplass er over høyre fairwaybunker. Greenen heller imot og voktes av straffeområde til venstre og bunker i høyre bakkant. Lande ballen kort og trille opp. Unngå venstre av green.",
+      "Par 3, Hcp 13. Bunkere i front, til venstre og bak green. Kul til venstre på greenen gjør at man bør sikte på høyre halvdel.",
+      "Par 4, Hcp 17. Kort par 4 - langt slående kan nå greenen, men OB til høyre og skog til venstre er risikabelt. Tryggeste er jern til bredeste del av fairway og kort innspill til flat green. Unngå lang av green.",
+      "Par 4, Hcp 9. Utslag mot venstre del av fairway gir lettere innspill. To bunkere venstre i fairway og en bunker høyre. Straffeområde til høyre for fairway og kort høyre av green. Bunker venstre side av green.",
+      "Par 4, Hcp 7. Wastebunker til venstre for fairway, hold deg høyre av denne. Vann i bakkant av green - ikke gå for langt.",
+      "Par 3, Hcp 15. Vanskelig pga ofte sidevind fra Solastranden. Ta gjerne en kølle mer enn du tror. Greenen heller imot. Bunker i venstre forkant. Unngå venstre av green.",
+      "Par 4, Hcp 5. To bunkere i venstre del av fairway og straffeområde mellom disse og green. Dyp bunker i forkant. Første halvdel av green heller bratt imot. Unngå lang av green.",
+      "Par 5, Hcp 11. Godt utslag gir mulighet for å nå greenen på to. Bunker til venstre og straffeområde til høyre for green. Tryggeste er å slå rett frem og ha et kort jern inn. Unngå venstre av green.",
+      "Par 4, Hcp 10. Legg utslaget mot venstre del av fairway forbi straffeområdet. Straffeområde på høyre side kort av green og bunker bak green høyre halvdel. Unngå lang av green.",
+      "Par 3, Hcp 18 - banens korteste hull. Vær oppmerksom på vinden. Bedre å være lang enn kort.",
+      "Par 5, Hcp 6. Straffeområde på begge sider av fairway. Legg slag 2 kort av fairwaybunkerne. Bunker kort høyre og lang venstre side av green. Innspill som lander 1 meter kort av green blir ofte liggende.",
+      "Par 3, Hcp 16. Greenen heller imot. Straffeområde til venstre og bunker til høyre. God sprett i fairway kort av green.",
+      "Par 3, Hcp 14. Vanskelig par 3. Straffeområde venstre kort av green. Bunker bak green senter og bunker venstre av green. Krever høyt slag for å stoppe på greenen. Vurder å legge seg kort mot høyre.",
+      "Par 4, Hcp 4. Legg deg kort av fairwaybunkerne og innspill mot venstre side av green. Sjekk vind før utslag - kjenner ofte ikke vinden ved slag 2 pga trærne.",
+      "Par 4, Hcp 2 - nest vanskeligste hull. Legg deg kort av straffeområde og fairwaybunker. God plass mellom green og greenbunker - vurder en kølle ekstra på innspill. Straffeområde bak green.",
+      "Par 3, Hcp 12. Vindstille på utslagstedet men vind i høyden. Bunker kort av green høyre side fanger mange baller. Straffeområde kort av green og skog bak green er straffeområde.",
+      "Par 4, Hcp 8. Utslag mot venstre side av fairway. Vær oppmerksom på fairwaybunkerne. Greenen beskyttet av straffeområde i front og dyp bunker bak. Hold deg mot venstre side av green.",
+    ]
+  },
+};
+
+const ACHIEVEMENTS = [
+  { id:"r1",  badge:"1",  title:"Forste runde",   desc:"Registrerte sin forste runde",                  check: r => r.length >= 1 },
+  { id:"r5",  badge:"5",  title:"5 runder",        desc:"Fullforte 5 runder",                            check: r => r.length >= 5 },
+  { id:"r10", badge:"10", title:"10 runder",       desc:"Fullforte 10 runder",                           check: r => r.length >= 10 },
+  { id:"bi",  badge:"B",  title:"Forste birdie",   desc:"Slo sin forste birdie",                         check: r => r.some(rd => rd.scores.some((s,i) => s === COURSES[rd.course].holes[i]-1)) },
+  { id:"ea",  badge:"E",  title:"Forste eagle",    desc:"Slo sin forste eagle",                          check: r => r.some(rd => rd.scores.some((s,i) => s <= COURSES[rd.course].holes[i]-2)) },
+  { id:"pr",  badge:"P",  title:"Par-runde",       desc:"Fullforte en runde pa par eller bedre",         check: r => r.some(rd => rd.diff <= 0) },
+  { id:"u90", badge:"90", title:"Under 90",        desc:"Slo under 90 slag pa Forus",                   check: r => r.some(rd => rd.course==="forus" && rd.total<90) },
+  { id:"u80", badge:"80", title:"Under 80",        desc:"Slo under 80 slag pa Forus",                   check: r => r.some(rd => rd.course==="forus" && rd.total<80) },
+  { id:"up",  badge:"UP", title:"Pa vei opp",      desc:"3 runder pa rad med lavere score enn forrige",  check: r => { if(r.length<3)return false; const l=r.slice(-3); return l[1].total<l[0].total&&l[2].total<l[1].total; } },
+];
+
+function fmtDate(d) { return new Date(d).toLocaleDateString("nb-NO",{day:"2-digit",month:"short"}); }
+function diffLabel(d) { return d===0?"E":d>0?"+"+d:""+d; }
+function diffColor(d) { return d<0?"#16a34a":d===0?"#2563eb":"#dc2626"; }
+
+function hullColor(delta) {
+  if (delta <= -2) return "#ffffff"; // eagle eller bedre: hvit
+  if (delta === -1) return "#fde047"; // birdie: gul
+  if (delta === 0)  return "#86efac"; // par: grønn
+  if (delta === 1)  return "#fb923c"; // bogey: oransje
+  if (delta === 2)  return "#fbcfe8"; // dobbelbogey: lyserød
+  if (delta === 3)  return "#f87171"; // trippelbogey: rød
+  return "#be123c";                   // over: mørkerød
+}
+
+function calcHCP(rounds) {
+  if(rounds.length<3) return null;
+  const use=rounds.slice(-20);
+  const diffs=use.map(r=>((r.total-COURSES[r.course].cr)*113)/COURSES[r.course].slope);
+  diffs.sort((a,b)=>a-b);
+  const n=use.length, take=n<=6?1:n<=8?2:n<=11?3:n<=14?4:n<=16?5:n<=18?6:8;
+  return (diffs.slice(0,take).reduce((a,b)=>a+b,0)/take*0.96).toFixed(1);
+}
+
+function lineChart(data, key, parKey, color, h) {
+  if(!data||data.length<2) return '<p style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">Trenger minst 2 runder for graf.</p>';
+  const W=460,H=h||160,PL=32,PR=12,PT=10,PB=28;
+  const vals=data.map(d=>d[key]);
+  const pars=parKey?data.map(d=>d[parKey]):null;
+  const allVals=pars?[...vals,...pars]:vals;
+  const minV=Math.min(...allVals)-1,maxV=Math.max(...allVals)+1;
+  const xS=(i)=>PL+(i/(data.length-1))*(W-PL-PR);
+  const yS=(v)=>PT+(1-(v-minV)/(maxV-minV))*(H-PT-PB);
+  const pts=vals.map((v,i)=>xS(i)+","+yS(v)).join(" ");
+  const parPts=pars?pars.map((v,i)=>xS(i)+","+yS(v)).join(" "):null;
+  let ticks="",labels="";
+  for(let i=0;i<=4;i++){
+    const v=Math.round(minV+(maxV-minV)*(i/4));
+    const y=yS(v);
+    ticks+=`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#f1f5f9" stroke-width="1"/>`;
+    labels+=`<text x="${PL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#94a3b8">${v}</text>`;
+  }
+  let xLabels="";
+  data.forEach((d,i)=>{ if(i===0||i===data.length-1||data.length<=6){ xLabels+=`<text x="${xS(i)}" y="${H-4}" text-anchor="middle" font-size="10" fill="#94a3b8">${fmtDate(d.date||"")}</text>`; }});
+  let dots="";
+  vals.forEach((v,i)=>{ dots+=`<circle cx="${xS(i)}" cy="${yS(v)}" r="4" fill="${color}"/>`; });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">${ticks}${labels}${xLabels}
+    ${parPts?`<polyline points="${parPts}" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 4"/>`:""}
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5"/>
+    ${dots}</svg>`;
+}
+
+// ── State ──────────────────────────────────────────────────────
+let state = {
+  view: "runde",
+  courseKey: "forus",
+  scores: Array(18).fill(""),
+  rounds: [],
+  statsHole: null,
+  statsFilter: "forus",
+  notices: [],
+  user: null,
+  authView: "login",
+  authError: "",
+  authLoading: false,
+  dataLoading: false,
+  editRound: null,       // runde som redigeres
+  editScores: null,      // scores under redigering
+  aiTips: "",
+  aiLoading: false,
+};
+
+function setState(patch) {
+  Object.assign(state, typeof patch==="function"?patch(state):patch);
+  // Ikke re-render auth hvis kun auth-input-felt endres
+  if(!state.user && document.getElementById("authEmail") === document.activeElement) return;
+  if(!state.user && document.getElementById("authPassword") === document.activeElement) return;
+  if(!state.user && document.getElementById("authName") === document.activeElement) return;
+  render();
+}
+
+// ── Firebase ───────────────────────────────────────────────────
+async function loadRounds(user) {
+  setState({dataLoading:true});
+  try {
+    const q = query(collection(db,"users",user.uid,"rounds"), orderBy("date","asc"));
+    const snap = await getDocs(q);
+    const rounds = snap.docs.map(d=>({...d.data(), firestoreId:d.id}));
+    setState({rounds, dataLoading:false});
+  } catch(e) { setState({dataLoading:false}); }
+}
+
+async function saveRound() {
+  const {courseKey,scores,rounds,user} = state;
+  const course = COURSES[courseKey];
+  const total = scores.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const diff = total - course.par;
+  const round = { date:new Date().toISOString(), course:courseKey, courseName:course.name, scores:scores.map(v=>parseInt(v)||0), total, par:course.par, diff };
+  try {
+    const docRef = await addDoc(collection(db,"users",user.uid,"rounds"), round);
+    const updated = [...rounds, {...round, firestoreId:docRef.id}];
+    const msgs = [];
+    const prev = rounds.filter(r=>r.course===courseKey);
+    if(!prev.length) msgs.push("Forste runde pa "+course.name+"!");
+    else if(total<Math.min(...prev.map(r=>r.total))) msgs.push("Ny personlig rekord pa "+course.name+": "+total+" slag!");
+    const hRec=[];
+    scores.forEach((s,i)=>{ const v=parseInt(s),pb=rounds.filter(r=>r.course===courseKey).map(r=>r.scores[i]).filter(x=>x>0); if(pb.length&&v<Math.min(...pb))hRec.push("hull "+(i+1)); });
+    if(hRec.length) msgs.push("Ny rekord pa "+hRec.join(", ")+"!");
+    const prevIds=ACHIEVEMENTS.filter(a=>a.check(rounds)).map(a=>a.id);
+    ACHIEVEMENTS.filter(a=>!prevIds.includes(a.id)&&a.check(updated)).forEach(a=>msgs.push("Achievement: "+a.title+"!"));
+    setState({rounds:updated, scores:Array(18).fill(""), notices:msgs});
+    if(msgs.length) setTimeout(()=>setState({notices:[]}),5000);
+  } catch(e) { alert("Kunne ikke lagre runden."); }
+}
+
+async function saveEditRound() {
+  const {editRound, editScores, rounds, user} = state;
+  const course = COURSES[editRound.course];
+  const total = editScores.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const diff = total - course.par;
+  const updated = {...editRound, scores:editScores.map(v=>parseInt(v)||0), total, diff};
+  try {
+    await updateDoc(doc(db,"users",user.uid,"rounds",editRound.firestoreId), {scores:updated.scores, total, diff});
+    setState({rounds: rounds.map(r=>r.firestoreId===editRound.firestoreId?updated:r), editRound:null, editScores:null});
+  } catch(e) { alert("Kunne ikke lagre endringene."); }
+}
+
+async function deleteRound(firestoreId) {
+  if(!confirm("Slett denne runden?")) return;
+  try {
+    await deleteDoc(doc(db,"users",state.user.uid,"rounds",firestoreId));
+    setState({rounds: state.rounds.filter(r=>r.firestoreId!==firestoreId)});
+  } catch(e) { alert("Kunne ikke slette runden."); }
+}
+
+onAuthStateChanged(auth, user => {
+  if(user) { setState({user}); loadRounds(user); }
+  else { setState({user:null, rounds:[]}); }
+});
+
+// ── AI Trener ──────────────────────────────────────────────────
+function generateTips() {
+  const {rounds, user} = state;
+  const name = user.displayName || "Tor";
+  const hcp = calcHCP(rounds);
+
+  if(rounds.length < 3) {
+    return `Hei ${name}! Registrer minst 3 runder for å få personlige tips.`;
+  }
+
+  // Beregn hull-statistikk per bane
+  const hullStats = {};
+  Object.keys(COURSES).forEach(ck => {
+    const cr = rounds.filter(r=>r.course===ck);
+    if(!cr.length) return;
+    hullStats[ck] = Array.from({length:18},(_,i)=>{
+      const vals = cr.map(r=>r.scores[i]).filter(v=>v>0);
+      if(!vals.length) return null;
+      const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+      const par = COURSES[ck].holes[i];
+      return { hole:i+1, par, hcpRank:COURSES[ck].hcp[i], avg, delta:parseFloat((avg-par).toFixed(2)), guide:COURSES[ck].guide[i], course:COURSES[ck].name, ck };
+    }).filter(Boolean);
+  });
+
+  const all = Object.values(hullStats).flat();
+  const worst = [...all].sort((a,b)=>b.delta-a.delta).slice(0,3);
+  const best  = [...all].sort((a,b)=>a.delta-b.delta).slice(0,2);
+
+  // Trend: siste 5 vs forrige 5
+  const recent = rounds.slice(-5);
+  const prev   = rounds.slice(-10,-5);
+  const recentAvg = recent.reduce((s,r)=>s+r.diff,0)/recent.length;
+  const prevAvg   = prev.length ? prev.reduce((s,r)=>s+r.diff,0)/prev.length : null;
+  const trending  = prevAvg !== null ? recentAvg - prevAvg : null;
+
+  // Par 3 vs par 4 vs par 5 analyse
+  const byPar = {3:[],4:[],5:[]};
+  all.forEach(h=>{ if(byPar[h.par]) byPar[h.par].push(h.delta); });
+  const parAvg = {};
+  [3,4,5].forEach(p=>{ if(byPar[p].length) parAvg[p]=(byPar[p].reduce((a,b)=>a+b,0)/byPar[p].length).toFixed(2); });
+
+  // Bygg tips
+  const tips = [];
+
+  // 1. Hilsen og overordnet status
+  let intro = `Hei ${name}! `;
+  if(hcp) intro += `Du har en handicap-indeks på ${hcp}. `;
+  if(trending !== null) {
+    if(trending < -0.5) intro += `Bra utvikling – du er ${Math.abs(trending.toFixed(1))} slag bedre de siste 5 rundene enn de 5 forrige. Hold den trenden!`;
+    else if(trending > 0.5) intro += `De siste 5 rundene har vært litt tøffe – ${trending.toFixed(1)} slag dårligere enn forrige periode. La oss se på hva vi kan gjøre.`;
+    else intro += `Scoren din er stabil. La oss se på hva som kan gi deg en ekstra gevinst.`;
+  }
+  tips.push(intro);
+
+  // 2. Verstinghull med konkrete råd fra baneguiden
+  if(worst.length) {
+    let t = "Fokusomrader: Du taper mest slag pa disse hullene:\n";
+    worst.forEach(h=>{
+      t += `\nHull ${h.hole} pa ${h.course} (snitt ${h.delta>0?"+":""}${h.delta}): ${h.guide}`;
+    });
+    tips.push(t);
+  }
+
+  // 3. Par-type analyse
+  const parTips = [];
+  if(parAvg[3] && parseFloat(parAvg[3]) > 1.2) parTips.push(`par 3-hullene (+${parAvg[3]} i snitt) – fokuser pa å lande pa greenen fremfor a sikte pa flagget`);
+  if(parAvg[4] && parseFloat(parAvg[4]) > 1.5) parTips.push(`par 4-hullene (+${parAvg[4]} i snitt) – prioriter fairway pa utslaget fremfor lengde`);
+  if(parAvg[5] && parseFloat(parAvg[5]) > 1.8) parTips.push(`par 5-hullene (+${parAvg[5]} i snitt) – spill dem som tre solide slag fremfor a forsoke a na pa to`);
+  if(parTips.length) tips.push("Køljetyper: Du sliter spesielt med " + parTips.join(" og ") + ".");
+
+  // 4. Beste hull – styrker
+  if(best.length) {
+    const bNames = best.map(h=>`hull ${h.hole} pa ${h.course} (snitt ${h.delta>0?"+":""}${h.delta})`).join(" og ");
+    tips.push(`Styrker: Du er best pa ${bNames}. Bruk samme tankegang her pa de hullene du sliter med – rolig og kontrollert.`);
+  }
+
+  // 5. Generelt råd basert på hcp
+  const hcpNum = hcp ? parseFloat(hcp) : 30;
+  let generalTip = "";
+  if(hcpNum > 25) generalTip = "Generelt rad: Pa dette niva gir kortspillet mest igjen. Prioriter a ligge pa greenen etter 2-3 slag fremfor a jage lengde pa utslagene.";
+  else if(hcpNum > 18) generalTip = "Generelt rad: Du er pa god vei. Konsistens pa fairway er nokkelord – unnga store tall ved a velge tryggere køljevalg pa vanskelige hull.";
+  else if(hcpNum > 10) generalTip = "Generelt rad: For a komme under 90 regelmessig matte du minimere dobbelbogeyer. Spill trygt pa hullene med hoy hcp-rangering og vær aggressiv pa de lette.";
+  else generalTip = "Generelt rad: Pa dette niva handler det om putting og innspill. Fokuser pa a lande pa riktig del av greenen for oppoverputt.";
+  tips.push(generalTip);
+
+  return tips.join("\n\n");
+}
+
+function handleChat(userMsg) {
+  const {chatHistory, rounds} = state;
+  const hcp = calcHCP(rounds);
+  const name = state.user?.displayName || "Tor";
+
+  // Enkel regelbasert chat
+  const msg = userMsg.toLowerCase();
+  let reply = "";
+
+  // Finn relevante hull fra meldingen
+  const hullMatch = msg.match(/hull\s*(\d+)/);
+  const hullNr = hullMatch ? parseInt(hullMatch[1]) : null;
+
+  if(hullNr && hullNr >= 1 && hullNr <= 18) {
+    // Svar om spesifikt hull
+    const courseKey = msg.includes("solastranden") ? "solastranden" : "forus";
+    const course = COURSES[courseKey];
+    const i = hullNr - 1;
+    const cr = rounds.filter(r=>r.course===courseKey);
+    const vals = cr.map(r=>r.scores[i]).filter(v=>v>0);
+    const avg = vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : null;
+    const delta = avg ? (parseFloat(avg) - course.holes[i]).toFixed(2) : null;
+
+    reply = `Hull ${hullNr} pa ${course.name} er ${course.guide[i]}`;
+    if(avg) reply += `\n\nDu spiller dette hullet i snitt ${avg} slag (${delta>0?"+":""}${delta} mot par).`;
+    if(delta > 1.5) reply += " Dette er ett av hullene du bor prioritere a forbedre.";
+    else if(delta < 0) reply += " Du spiller faktisk dette hullet under par i snitt – bra!";
+
+  } else if(msg.includes("par 3") || msg.includes("par3")) {
+    const vals = Object.keys(COURSES).flatMap(ck => {
+      const cr = rounds.filter(r=>r.course===ck);
+      return COURSES[ck].holes.map((p,i)=>{ if(p!==3) return null; const vs=cr.map(r=>r.scores[i]).filter(v=>v>0); return vs.length?(vs.reduce((a,b)=>a+b,0)/vs.length)-3:null; }).filter(v=>v!==null);
+    });
+    const avg = vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2):null;
+    reply = avg ? `Du spiller par 3-hullene i snitt ${avg>0?"+":""}${avg} mot par. ${parseFloat(avg)>1?"Prioriter a lande pa greenen - ta gjerne en kølle mer enn du tror, spesielt pa Solastranden hvor det ofte er vind.":"Bra pa par 3-hullene!"}` : "Ikke nok data for par 3-analyse enna.";
+
+  } else if(msg.includes("par 4") || msg.includes("par4")) {
+    const vals = Object.keys(COURSES).flatMap(ck => {
+      const cr = rounds.filter(r=>r.course===ck);
+      return COURSES[ck].holes.map((p,i)=>{ if(p!==4) return null; const vs=cr.map(r=>r.scores[i]).filter(v=>v>0); return vs.length?(vs.reduce((a,b)=>a+b,0)/vs.length)-4:null; }).filter(v=>v!==null);
+    });
+    const avg = vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2):null;
+    reply = avg ? `Du spiller par 4-hullene i snitt ${avg>0?"+":""}${avg} mot par. ${parseFloat(avg)>1.5?"Fokuser pa kontrollerte utslag til fairway. Pa dogleg-hullene (som hull 6 og 16 pa Forus) er posisjon viktigere enn lengde.":"Solid pa par 4-hullene!"}` : "Ikke nok data enna.";
+
+  } else if(msg.includes("par 5") || msg.includes("par5")) {
+    const vals = Object.keys(COURSES).flatMap(ck => {
+      const cr = rounds.filter(r=>r.course===ck);
+      return COURSES[ck].holes.map((p,i)=>{ if(p!==5) return null; const vs=cr.map(r=>r.scores[i]).filter(v=>v>0); return vs.length?(vs.reduce((a,b)=>a+b,0)/vs.length)-5:null; }).filter(v=>v!==null);
+    });
+    const avg = vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2):null;
+    reply = avg ? `Du spiller par 5-hullene i snitt ${avg>0?"+":""}${avg} mot par. ${parseFloat(avg)>2?"Spill par 5-hullene som tre solide slag. Pa hull 9 og 18 pa Forus er det viktig a unnga bunkerne pa transportslaget.":"Bra pa par 5-hullene!"}` : "Ikke nok data enna.";
+
+  } else if(msg.includes("trend") || msg.includes("utvikling") || msg.includes("bedre") || msg.includes("forbedring")) {
+    const recent = rounds.slice(-5);
+    const prev = rounds.slice(-10,-5);
+    if(recent.length < 2) { reply = "Trenger flere runder for a vise trend."; }
+    else {
+      const rAvg = (recent.reduce((s,r)=>s+r.total,0)/recent.length).toFixed(1);
+      const pAvg = prev.length?(prev.reduce((s,r)=>s+r.total,0)/prev.length).toFixed(1):null;
+      reply = `Siste 5 runder: snitt ${rAvg} slag.`;
+      if(pAvg) reply += ` Forrige 5 runder: snitt ${pAvg} slag. Du er ${parseFloat(rAvg)<parseFloat(pAvg)?"pa vei fremover – "+( parseFloat(pAvg)-parseFloat(rAvg)).toFixed(1)+" slag bedre!":"litt tilbake – "+( parseFloat(rAvg)-parseFloat(pAvg)).toFixed(1)+" slag mer enn forrige periode. Ikke gi opp!"}`;
+    }
+
+  } else if(msg.includes("handicap") || msg.includes("hcp")) {
+    reply = hcp ? `Din beregnede handicap-indeks er ${hcp}. ${parseFloat(hcp)>20?"For a komme under 20 bor du fokusere pa a redusere store tall pa de vanskeligste hullene.":parseFloat(hcp)>10?"Du nærmer deg en tosifret handicap. Konsistens er nøkkelen nå.":"Imponerende handicap! Fokuser pa kortspillet for a komme videre."}` : "Trenger minst 3 runder for a beregne handicap.";
+
+  } else if(msg.includes("forus")) {
+    const fr = rounds.filter(r=>r.course==="forus");
+    if(!fr.length) { reply="Ingen runder pa Forus registrert enna."; }
+    else {
+      const avg=(fr.reduce((s,r)=>s+r.total,0)/fr.length).toFixed(1);
+      const best=Math.min(...fr.map(r=>r.total));
+      reply = `Pa Forus har du spilt ${fr.length} runder med snitt ${avg} slag. Beste runde er ${best} slag. Forus er en krevende bane med mange bunkere og dogleg-hull. Hull 6 og 16 (de to vanskeligste) krever god posisjonering pa utslaget.`;
+    }
+
+  } else if(msg.includes("solastranden")) {
+    const sr = rounds.filter(r=>r.course==="solastranden");
+    if(!sr.length) { reply="Ingen runder pa Solastranden registrert enna."; }
+    else {
+      const avg=(sr.reduce((s,r)=>s+r.total,0)/sr.length).toFixed(1);
+      const best=Math.min(...sr.map(r=>r.total));
+      reply = `Pa Solastranden har du spilt ${sr.length} runder med snitt ${avg} slag. Beste runde er ${best} slag. Solastranden er særlig krevende pa grunn av vinden fra havet. Hull 2 er banens vanskeligste – husk a lande kort og trille opp pa greenen.`;
+    }
+
+  } else if(msg.includes("vind")) {
+    reply = "Vind er en stor faktor pa begge banene, spesielt Solastranden. Generelle rad:\n\n- Pa par 3-hull: sjekk alltid flagget ved greenen, ikke bare ved tee\n- Hull 7 og 11 pa Solastranden er særlig utsatt\n- Hull 11 pa Forus er ogsa vanskelig i vind pga apent terreng\n- Ta gjerne en kølle mer enn du tror i motvind";
+
+  } else if(msg.includes("putting") || msg.includes("putt")) {
+    reply = "Putting registreres ikke separat i appen enna. Men basert pa baneguidene: greener pa Forus heller ofte mot spilleretningen, sa prøv alltid a lande innspillet pa riktig side for oppoverputt. Pa Solastranden er greenen pa hull 2 spesielt krevende.";
+
+  } else if(msg.includes("tips") || msg.includes("rad") || msg.includes("hjelp") || msg.includes("forbedre")) {
+    reply = generateTips();
+
+  } else if(msg.includes("hei") || msg.includes("hallo") || msg.includes("god")) {
+    reply = `Hei ${name}! Jeg er golftreneren din pa Sola GK. Spor meg om spesifikke hull, baner, par-typer, utvikling eller be om generelle tips. Hva vil du vite?`;
+
+  } else {
+    reply = `Jeg kan hjelpe deg med:\n- Spesifikke hull ("Hva bor jeg gjøre pa hull 16?")\n- Baner ("Hvordan ligger jeg an pa Forus?")\n- Par-typer ("Hvordan spiller jeg par 3-hullene?")\n- Utvikling ("Hva er trenden min?")\n- Handicap\n- Generelle tips\n\nHva vil du vite, ${name}?`;
+  }
+
+  const newHistory = [...chatHistory, {role:"user",text:userMsg}, {role:"trainer",text:reply}];
+  setState({chatHistory:newHistory});
+}
+
+// ── Render: Auth ───────────────────────────────────────────────
+function renderAuth() {
+  document.getElementById("app").innerHTML=`
+    <div style="max-width:380px;margin:60px auto;padding:0 16px">
+      <div style="text-align:center;margin-bottom:28px">
+        <div style="font-size:22px;font-weight:700;color:#15803d">Sola GK Scoretracker</div>
+      </div>
+      <div class="card" style="padding:24px">
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <button class="tab-btn" id="btn-login" onclick="window._authTab('login')" style="background:${state.authView==="login"?"#15803d":"#e2e8f0"};color:${state.authView==="login"?"#fff":"#374151"}">Logg inn</button>
+          <button class="tab-btn" id="btn-register" onclick="window._authTab('register')" style="background:${state.authView==="register"?"#15803d":"#e2e8f0"};color:${state.authView==="register"?"#fff":"#374151"}">Opprett konto</button>
+        </div>
+        ${state.authView==="register"?`<div style="margin-bottom:12px">
+          <label style="font-size:13px;color:#64748b;display:block;margin-bottom:4px">Navn</label>
+          <input type="text" id="authName" placeholder="Fornavn" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0;font-size:14px;outline:none">
+        </div>`:""}
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;color:#64748b;display:block;margin-bottom:4px">E-post</label>
+          <input type="email" id="authEmail" placeholder="din@epost.no" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0;font-size:14px;outline:none" autocomplete="email">
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="font-size:13px;color:#64748b;display:block;margin-bottom:4px">Passord</label>
+          <input type="password" id="authPassword" placeholder="Minst 6 tegn" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0;font-size:14px;outline:none" autocomplete="current-password">
+        </div>
+        <div id="authError" style="display:${state.authError?"block":"none"};background:#fef2f2;color:#dc2626;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px">${state.authError}</div>
+        <button onclick="window._doAuth()" style="width:100%;padding:12px 0;border-radius:10px;border:none;background:#15803d;color:#fff;font-weight:700;font-size:15px;cursor:pointer">
+          ${state.authView==="login"?"Logg inn":"Opprett konto"}
+        </button>
+      </div>
+    </div>`;
+
+  window._authTab = v => { state.authView=v; state.authError=""; renderAuth(); };
+  window._doAuth = async () => {
+    const email = document.getElementById("authEmail")?.value||"";
+    const password = document.getElementById("authPassword")?.value||"";
+    const name = document.getElementById("authName")?.value||"";
+    const btn = document.querySelector("#app button:last-child");
+    if(btn) btn.disabled=true;
+    state.authError="";
+    try {
+      if(state.authView==="login") {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        if(name) await updateProfile(cred.user, {displayName:name});
+      }
+    } catch(e) {
+      let msg="Noe gikk galt. Prøv igjen.";
+      if(e.code==="auth/user-not-found"||e.code==="auth/wrong-password"||e.code==="auth/invalid-credential") msg="Feil e-post eller passord.";
+      else if(e.code==="auth/email-already-in-use") msg="E-postadressen er allerede i bruk.";
+      else if(e.code==="auth/weak-password") msg="Passordet ma være minst 6 tegn.";
+      else if(e.code==="auth/invalid-email") msg="Ugyldig e-postadresse.";
+      state.authError=msg;
+      renderAuth();
+    }
+  };
+}
+
+// ── Render: Edit Round ─────────────────────────────────────────
+function renderEditRound() {
+  const {editRound, editScores} = state;
+  const course = COURSES[editRound.course];
+  let grid="";
+  for(let half=0;half<2;half++){
+    if(half===1) grid+=`<div style="height:1px;background:#e2e8f0;margin:8px 0"></div>`;
+    grid+=`<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:4px">`;
+    for(let j=0;j<9;j++){
+      const i=half*9+j,par=course.holes[i],val=parseInt(editScores[i]),delta=val-par;
+      const bg = isNaN(delta) ? "#f1f5f9" : hullColor(delta);
+      grid+=`<div style="text-align:center">
+        <div style="font-size:9px;color:#64748b;font-weight:600">H${i+1}</div>
+        <div style="font-size:9px;color:#94a3b8">p${par}</div>
+        <input type="number" min="1" max="15" value="${editScores[i]||""}"
+          oninput="window._setEditScore(${i},this.value)"
+          style="width:100%;text-align:center;padding:4px 0;border-radius:6px;border:1px solid #e2e8f0;background:${bg};font-weight:700;font-size:15px">
+      </div>`;
+    }
+    grid+=`</div>`;
+  }
+  const total = editScores.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const diff = total - course.par;
+  const filled = editScores.every(v=>parseInt(v)>0);
+
+  document.getElementById("app").innerHTML=`
+    <div style="max-width:520px;margin:0 auto;padding:12px 16px;background:#f8fafc;min-height:100vh">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <button onclick="window._cancelEdit()" style="padding:6px 12px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#64748b;cursor:pointer;font-size:13px">Avbryt</button>
+        <div style="font-size:16px;font-weight:700;color:#15803d">Rediger runde – ${fmtDate(editRound.date)}</div>
+      </div>
+      <div class="card">${grid}</div>
+      ${total>0?`<div style="background:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+        <span style="font-weight:600">Total: <strong style="font-size:20px">${total}</strong></span>
+        <span style="font-weight:700;font-size:18px;color:${diffColor(diff)}">${diffLabel(diff)}</span>
+      </div>`:""}
+      <button onclick="window._saveEdit()" ${filled?"":"disabled"} style="width:100%;padding:12px 0;border-radius:10px;border:none;background:${filled?"#15803d":"#e2e8f0"};color:${filled?"#fff":"#94a3b8"};font-weight:700;font-size:15px;cursor:${filled?"pointer":"default"}">Lagre endringer</button>
+    </div>`;
+
+  window._setEditScore = (i,val) => {
+    const n=parseInt(val);
+    if(val===""||( n>=1&&n<=15)){
+      state.editScores[i]=val===""?"":String(n);
+      renderEditRound();
+    }
+  };
+  window._cancelEdit = () => setState({editRound:null,editScores:null});
+  window._saveEdit = saveEditRound;
+}
+
+// ── Render: Main ───────────────────────────────────────────────
+function render() {
+  if(!state.user) { renderAuth(); return; }
+  if(state.dataLoading) {
+    document.getElementById("app").innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-size:15px;color:#64748b">Laster runder...</div>`;
+    return;
+  }
+  if(state.editRound) { renderEditRound(); return; }
+
+  const { view, courseKey, scores, rounds, statsHole, notices, user, statsFilter, aiTips, aiLoading } = state;
+  const course = COURSES[courseKey];
+  const total = scores.reduce((s,v)=>s+(parseInt(v)||0),0);
+  const diff = total - course.par;
+  const filled = scores.every(v=>parseInt(v)>0);
+  const hcp = calcHCP(rounds);
+  const unlockedAch = ACHIEVEMENTS.filter(a=>a.check(rounds));
+
+  const card = (content, mb=14) =>
+    `<div class="card" style="margin-bottom:${mb}px">${content}</div>`;
+  const statBox = (lbl,val,col) =>
+    `<div style="background:#f8fafc;border-radius:10px;padding:10px 6px;text-align:center">
+      <div style="font-size:11px;color:#64748b;font-weight:600">${lbl}</div>
+      <div style="font-size:17px;font-weight:700;color:${col}">${val}</div>
+    </div>`;
+
+  // Hull-grid med auto-fokus til neste hull
+  let grid="";
+  for(let half=0;half<2;half++){
+    if(half===1) grid+=`<div style="height:1px;background:#e2e8f0;margin:8px 0"></div>`;
+    grid+=`<div style="display:grid;grid-template-columns:repeat(9,1fr);gap:4px">`;
+    for(let j=0;j<9;j++){
+      const i=half*9+j,par=course.holes[i],val=parseInt(scores[i]),delta=val-par;
+      const bg = isNaN(delta) ? "#f1f5f9" : hullColor(delta);
+      const nextId = i<17 ? `document.getElementById('h${i+1}')?.focus()` : "";
+      grid+=`<div style="text-align:center">
+        <div style="font-size:9px;color:#64748b;font-weight:600">H${i+1}</div>
+        <div style="font-size:9px;color:#94a3b8">p${par}</div>
+        <input id="h${i}" type="number" min="1" max="15" value="${scores[i]}"
+          oninput="window._setScore(${i},this.value,${i<17})"
+          style="width:100%;text-align:center;padding:4px 0;border-radius:6px;border:1px solid #e2e8f0;background:${bg};font-weight:700;font-size:15px">
+      </div>`;
+    }
+    grid+=`</div>`;
+  }
+
+  let main="";
+
+  if(view==="runde"){
+    main=`
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        ${Object.entries(COURSES).map(([k,c])=>`<button onclick="window._setCourse('${k}')" style="flex:1;padding:7px 0;border-radius:8px;border:2px solid ${courseKey===k?"#15803d":"#cbd5e1"};background:${courseKey===k?"#dcfce7":"#fff"};font-weight:600;font-size:13px;cursor:pointer">${c.name}</button>`).join("")}
+      </div>
+      ${card(grid)}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:11px">
+        ${[["#ffffff","Eagle","#e2e8f0"],["#fde047","Birdie",""],["#86efac","Par",""],["#fb923c","Bogey",""],["#fbcfe8","Dobbel",""],["#f87171","Trippel",""],["#be123c","Over","#fff"]].map(([c,l,border])=>`<span style="background:${c};padding:2px 8px;border-radius:10px;color:${c==="#be123c"?"#fff":"#374151"};font-weight:500;border:1px solid ${border||c}">${l}</span>`).join("")}
+      </div>
+      ${total>0?`<div style="background:#fff;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+        <span style="font-weight:600">Total: <strong style="font-size:20px">${total}</strong></span>
+        <span style="font-weight:700;font-size:18px;color:${diffColor(diff)}">${diffLabel(diff)}</span>
+      </div>`:""}
+      <button onclick="window._saveRound()" ${filled?"":"disabled"} style="width:100%;padding:12px 0;border-radius:10px;border:none;background:${filled?"#15803d":"#e2e8f0"};color:${filled?"#fff":"#94a3b8"};font-weight:700;font-size:15px;cursor:${filled?"pointer":"default"}">Lagre runde</button>`;
+  }
+
+  if(view==="statistikk"){
+    const filtered = rounds.filter(r=>r.course===statsFilter);
+    const diffs = filtered.map(r=>r.diff);
+    const avg = diffs.length?(diffs.reduce((a,b)=>a+b,0)/diffs.length).toFixed(1):null;
+    const best = diffs.length?Math.min(...diffs):null;
+
+    const worst=Array.from({length:18},(_,i)=>{
+      const vs=filtered.map(r=>({s:r.scores[i],p:COURSES[r.course].holes[i]})).filter(v=>v.s>0);
+      if(!vs.length)return{hole:i+1,delta:0};
+      return{hole:i+1,delta:parseFloat((vs.reduce((s,v)=>s+(v.s-v.p),0)/vs.length).toFixed(2))};
+    }).sort((a,b)=>b.delta-a.delta);
+
+    const holeBtns=Array.from({length:18},(_,i)=>
+      `<button onclick="window._setStatsHole(${i})" style="padding:4px 10px;border-radius:20px;border:none;cursor:pointer;font-size:12px;font-weight:600;background:${statsHole===i?"#15803d":"#e2e8f0"};color:${statsHole===i?"#fff":"#374151"}">H${i+1}</button>`
+    ).join("");
+
+    let holeSection="";
+    if(statsHole!==null){
+      const hd=filtered.filter(r=>r.scores[statsHole]>0).map(r=>({date:r.date,Slag:r.scores[statsHole],Par:COURSES[r.course].holes[statsHole]}));
+      if(hd.length>=1){
+        const hvals=hd.map(d=>d.Slag);
+        const hpar=COURSES[statsFilter].holes[statsHole];
+        holeSection=`
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+            ${[["Snitt",(hvals.reduce((a,b)=>a+b,0)/hvals.length).toFixed(1)],["Best",Math.min(...hvals)],["Par",hpar]].map(([l,v])=>`<div style="text-align:center;background:#f8fafc;border-radius:8px;padding:6px 4px"><div style="font-size:11px;color:#64748b">${l}</div><div style="font-weight:700;font-size:16px">${v}</div></div>`).join("")}
+          </div>
+          ${lineChart(hd,"Slag","Par","#2563eb",160)}`;
+      } else {
+        holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">Ingen data enna.</p>`;
+      }
+    } else {
+      holeSection=`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:8px">Trykk pa et hull for a se grafen.</p>`;
+    }
+
+    const histRows=!filtered.length
+      ?`<p style="color:#94a3b8;font-size:13px;text-align:center;padding:12px">Ingen runder pa denne banen enna.</p>`
+      :[...filtered].reverse().map(r=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #f1f5f9">
+          <div><span style="font-weight:600;font-size:13px">${fmtDate(r.date)}</span><span style="font-size:11px;color:#94a3b8;margin-left:6px">${r.courseName}</span></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-weight:700;font-size:15px">${r.total}</span>
+            <span style="font-weight:700;font-size:13px;color:${diffColor(r.diff)}">${diffLabel(r.diff)}</span>
+            <button onclick="window._startEdit('${r.firestoreId}')" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#64748b;cursor:pointer">Rediger</button>
+            <button onclick="window._deleteRound('${r.firestoreId}')" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:18px;padding:0;line-height:1">x</button>
+          </div>
+        </div>`).join("");
+
+    main=`
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        ${Object.entries(COURSES).map(([k,c])=>`<button onclick="window._setStatsFilter('${k}')" style="flex:1;padding:7px 0;border-radius:8px;border:2px solid ${statsFilter===k?"#15803d":"#cbd5e1"};background:${statsFilter===k?"#dcfce7":"#fff"};font-weight:600;font-size:13px;cursor:pointer">${c.name}</button>`).join("")}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:${hcp===null&&rounds.length<3?4:14}px">
+        ${statBox("Runder",filtered.length,"#2563eb")}
+        ${statBox("Snitt",avg!==null?(Number(avg)>0?"+"+avg:avg):"-","#d97706")}
+        ${statBox("Best",best!==null?diffLabel(best):"-","#16a34a")}
+        ${statBox("HCP",hcp!==null?hcp:"-","#7c3aed")}
+      </div>
+      ${hcp===null&&rounds.length<3?`<p style="font-size:12px;color:#94a3b8;margin-bottom:12px;text-align:center">Trenger minst 3 runder for handicap-beregning</p>`:""}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Totalt antall slag per runde</div>${filtered.length>=2?lineChart(filtered.map(r=>({date:r.date,Slag:r.total,Par:r.par})),"Slag","Par","#15803d",180):'<p style="color:#94a3b8;font-size:13px;text-align:center;padding:16px">Trenger minst 2 runder for graf.</p>'}`)}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:4px">Verstinghull</div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">Topp 5 hull med hoyest snitt over par</div>
+        ${worst.slice(0,5).map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:44px;font-weight:700;font-size:13px">Hull ${h.hole}</div>
+          <div style="flex:1;background:#f1f5f9;border-radius:6px;height:18px;overflow:hidden">
+            <div style="width:${Math.max(4,Math.min(100,(h.delta/3)*100))}%;background:${h.delta>1?"#ef4444":h.delta>0.5?"#f97316":"#fbbf24"};height:100%;border-radius:6px"></div>
+          </div>
+          <div style="width:52px;text-align:right;font-size:13px;font-weight:700;color:#dc2626">${h.delta>0?"+":""}${h.delta}</div>
+        </div>`).join("")}`)}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:4px">Beste hull</div>
+        <div style="font-size:12px;color:#94a3b8;margin-bottom:10px">Topp 5 hull med lavest snitt under par</div>
+        ${[...worst].sort((a,b)=>a.delta-b.delta).slice(0,5).map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:44px;font-weight:700;font-size:13px">Hull ${h.hole}</div>
+          <div style="flex:1;background:#f1f5f9;border-radius:6px;height:18px;overflow:hidden">
+            <div style="width:${Math.max(4,Math.min(100,(Math.abs(h.delta)/2)*100))}%;background:${h.delta<-0.5?"#16a34a":"#86efac"};height:100%;border-radius:6px"></div>
+          </div>
+          <div style="width:52px;text-align:right;font-size:13px;font-weight:700;color:#16a34a">${h.delta>0?"+":""}${h.delta}</div>
+        </div>`).join("")}`)}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:10px">Graf per hull</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${holeBtns}</div>
+        ${holeSection}`)}
+      ${card(`<div style="font-weight:700;color:#374151;margin-bottom:8px">Rundehistorikk</div>${histRows}`,0)}`;
+  }
+
+  if(view==="achievements"){
+    const rows=ACHIEVEMENTS.map((a,i)=>{
+      const ok=a.check(rounds);
+      return `<div style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:${i<ACHIEVEMENTS.length-1?"1px solid #f1f5f9":"none"};opacity:${ok?1:0.4};background:${ok?"#fff":"#f8fafc"}">
+        <div style="width:36px;height:36px;border-radius:50%;background:${ok?"#dcfce7":"#e2e8f0"};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:${ok?"#15803d":"#94a3b8"};flex-shrink:0">${a.badge}</div>
+        <div>
+          <div style="font-weight:700;font-size:14px;color:${ok?"#1e293b":"#94a3b8"}">${a.title}</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px">${a.desc}</div>
+        </div>
+        ${ok?`<div style="margin-left:auto;color:#16a34a;font-size:20px;font-weight:700">&#10003;</div>`:""}
+      </div>`;
+    }).join("");
+    main=`
+      <p style="font-size:13px;color:#64748b;margin-bottom:14px;text-align:center">${unlockedAch.length} av ${ACHIEVEMENTS.length} achievements last opp</p>
+      <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06)">${rows}</div>`;
+  }
+
+  if(view==="trener"){
+    const {chatHistory, chatInput} = state;
+    const msgs = chatHistory.map(m=>`
+      <div style="display:flex;justify-content:${m.role==="user"?"flex-end":"flex-start"};margin-bottom:10px">
+        <div style="max-width:82%;padding:10px 13px;border-radius:${m.role==="user"?"14px 14px 4px 14px":"14px 14px 14px 4px"};background:${m.role==="user"?"#15803d":"#fff"};color:${m.role==="user"?"#fff":"#1e293b"};font-size:13px;line-height:1.6;box-shadow:0 1px 3px rgba(0,0,0,0.08);white-space:pre-wrap">${m.text}</div>
+      </div>`).join("");
+
+    const welcome = !chatHistory.length ? `
+      <div style="text-align:center;padding:20px 0;color:#94a3b8">
+        <div style="font-size:32px;margin-bottom:8px">golf</div>
+        <div style="font-size:14px;font-weight:600;color:#64748b;margin-bottom:4px">Golftrener – Sola GK</div>
+        <div style="font-size:12px">Spor om hull, baner, utvikling eller be om tips</div>
+      </div>` : "";
+
+    main=`
+      <div class="card" style="display:flex;flex-direction:column;height:65vh;padding:0;overflow:hidden">
+        <div id="chatbox" style="flex:1;overflow-y:auto;padding:14px">
+          ${welcome}${msgs}
+        </div>
+        <div style="border-top:1px solid #f1f5f9;padding:10px;display:flex;gap:8px">
+          <input id="chatInput" type="text" placeholder="Spor om hull 16, par 3, utvikling..." value="${chatInput||""}"
+            onkeydown="if(event.key==='Enter')window._sendChat()"
+            style="flex:1;padding:9px 12px;border-radius:20px;border:1px solid #e2e8f0;font-size:13px;outline:none">
+          <button onclick="window._sendChat()" style="padding:9px 16px;border-radius:20px;border:none;background:#15803d;color:#fff;font-weight:600;font-size:13px;cursor:pointer">Send</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
+        ${["Gi meg tips","Hull 16 pa Forus","Hvordan ligger jeg an?","Par 3-hullene","Hva er trenden min?","Solastranden"].map(s=>`<button onclick="window._quickChat('${s}')" style="padding:5px 12px;border-radius:20px;border:1px solid #e2e8f0;background:#fff;font-size:12px;cursor:pointer;color:#374151">${s}</button>`).join("")}
+      </div>`;
+  }
+
+  document.getElementById("app").innerHTML=`
+    <div style="max-width:520px;margin:0 auto;padding:12px 16px;background:#f8fafc;min-height:100vh">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div>
+          <div style="font-size:20px;font-weight:700;color:#15803d">Sola GK Scoretracker</div>
+          ${hcp!==null?`<div style="font-size:13px;color:#64748b">Handicap-indeks: <strong style="color:#15803d">${hcp}</strong></div>`:""}
+        </div>
+        <button onclick="window._signOut()" style="font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#64748b;cursor:pointer">Logg ut</button>
+      </div>
+      ${notices.length?`<div style="background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:12px;margin-bottom:14px">${notices.map(n=>`<div style="font-weight:600;color:#854d0e;font-size:14px;margin-bottom:4px">${n}</div>`).join("")}</div>`:""}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:14px">
+        ${["runde","statistikk","achievements","trener"].map(v=>`<button onclick="window._setView('${v}')" style="padding:7px 0;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:12px;background:${view===v?"#15803d":"#e2e8f0"};color:${view===v?"#fff":"#374151"}">${v==="runde"?"Ny runde":v==="trener"?"Trener":v.charAt(0).toUpperCase()+v.slice(1)}</button>`).join("")}
+      </div>
+      ${main}
+    </div>`;
+
+  window._setView = v => setState({view:v});
+  window._setCourse = k => setState({courseKey:k, scores:Array(18).fill("")});
+  window._setStatsFilter = k => setState({statsFilter:k, statsHole:null});
+  window._setStatsHole = i => setState(s=>({statsHole:s.statsHole===i?null:i}));
+  window._setScore = (i,val,autoNext) => {
+    const n=parseInt(val);
+    if(val===""|| (n>=1&&n<=15)){
+      state.scores[i]=val===""?"":String(n);
+      if(autoNext && n>=1 && n<=15) setTimeout(()=>document.getElementById("h"+(i+1))?.focus(),50);
+      render();
+    }
+  };
+  window._saveRound = saveRound;
+  window._deleteRound = deleteRound;
+  window._startEdit = (fid) => { const r=state.rounds.find(r=>r.firestoreId===fid); if(r) setState({editRound:r,editScores:[...r.scores.map(String)]}); };
+  window._signOut = () => signOut(auth);
+
+  // Koble opp chat-knapper etter render
+  setTimeout(() => {
+    const sendBtn = document.getElementById("sendBtn");
+    const chatInput = document.getElementById("chatInput");
+    if(sendBtn && chatInput) {
+      sendBtn.addEventListener("click", () => {
+        const msg = chatInput.value.trim();
+        if(msg) { chatInput.value=""; handleChat(msg); }
+      });
+      chatInput.addEventListener("keydown", e => {
+        if(e.key==="Enter") {
+          const msg = chatInput.value.trim();
+          if(msg) { chatInput.value=""; handleChat(msg); }
+        }
+      });
+    }
+    document.querySelectorAll(".quickbtn").forEach(btn => {
+      btn.addEventListener("click", () => handleChat(btn.dataset.msg));
+    });
+    const cb = document.getElementById("chatbox");
+    if(cb) cb.scrollTop = cb.scrollHeight;
+  }, 50);
+}
+
+render();
+</script>
+
+</body>
+</html>
